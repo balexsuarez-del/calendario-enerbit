@@ -181,6 +181,41 @@ textarea.fi{resize:vertical;min-height:64px}
 .toast.show{transform:translateX(-50%) translateY(0)}
 .toast.ok{background:var(--gn)}.toast.err{background:#EF4444}.toast.info{background:var(--pp)}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+/* VISTAS */
+.view-tabs{display:flex;gap:4px;background:rgba(255,255,255,.1);padding:4px;border-radius:8px}
+.view-tab{padding:4px 12px;border:none;border-radius:6px;font-size:.72rem;font-weight:700;cursor:pointer;color:rgba(255,255,255,.7);background:transparent;font-family:inherit;transition:all .15s}
+.view-tab.on{background:#fff;color:var(--pp)}
+/* BOTÓN HOY */
+.btn-hoy{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:4px 12px;border-radius:7px;font-size:.72rem;font-weight:700;cursor:pointer;font-family:inherit}
+.btn-hoy:hover{background:rgba(255,255,255,.28)}
+/* FILTROS EXTRA */
+select.fs-sm{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.22);color:#fff;padding:4px 8px;border-radius:7px;font-size:.72rem;font-family:inherit;max-width:110px}
+select.fs-sm option{color:var(--gy);background:#fff}
+.fi-search{flex:1;padding:5px 10px;border:1px solid rgba(255,255,255,.3);border-radius:7px;font-size:.73rem;background:rgba(255,255,255,.12);color:#fff;font-family:inherit;min-width:130px}
+.fi-search::placeholder{color:rgba(255,255,255,.5)}
+.fi-search:focus{outline:none;background:rgba(255,255,255,.22)}
+/* VISTA SEMANAL */
+.week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:12px;max-width:1200px;margin:0 auto}
+.week-col{background:#fff;border:1.5px solid var(--bd);border-radius:10px;overflow:hidden;min-height:400px}
+.week-col-hdr{padding:6px 8px;background:var(--bgs);border-bottom:1px solid var(--bd);font-size:.72rem;font-weight:800;color:var(--pp);text-align:center}
+.week-col-hdr.today-h{background:var(--or);color:#fff}
+.week-col-body{padding:4px;display:flex;flex-direction:column;gap:3px}
+.week-chip{font-size:.62rem;padding:3px 6px;border-radius:5px;cursor:pointer;font-weight:600;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* VISTA DIARIA */
+.day-view{padding:12px;max-width:900px;margin:0 auto}
+.day-view-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.day-view-title{font-size:1.1rem;font-weight:800;color:var(--pd)}
+/* HISTORIAL */
+.hist-item{padding:8px 12px;border-bottom:1px solid var(--bd);font-size:.73rem}
+.hist-item:last-child{border-bottom:none}
+.hist-who{font-weight:700;color:var(--pp)}
+.hist-time{color:#9CA3AF;font-size:.67rem}
+.hist-action{color:var(--gy)}
+/* SYNC INDICATOR */
+.sync-dot{width:7px;height:7px;border-radius:50%;background:#9CA3AF;flex-shrink:0;transition:background .3s}
+.sync-dot.syncing{background:var(--orl);animation:blink .6s infinite}
+.sync-dot.synced{background:#4ADE80}
+.sync-dot.error{background:#EF4444}
 /* CAMPOS EDITABLES EN OS */
 .edit-sec{border-top:1px solid var(--bd);padding-top:9px;margin-top:9px;display:flex;flex-direction:column;gap:8px}
 .edit-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
@@ -291,6 +326,19 @@ textarea.fi{resize:vertical;min-height:64px}
     <div class="kpi"><div class="kv" id="k-act" style="color:var(--pl)">–</div><div class="kl">✏️ Actividades</div></div>
   </div>
 
+  <!-- TABS DE VISTA + BOTÓN HOY -->
+  <div style="background:var(--pd);padding:4px 16px 0;display:flex;align-items:center;gap:8px;border-bottom:2px solid rgba(255,255,255,.1)">
+    <div class="view-tabs">
+      <button class="view-tab on" id="vt-month" onclick="setView('month')">📅 Mes</button>
+      <button class="view-tab" id="vt-week"  onclick="setView('week')">📋 Semana</button>
+      <button class="view-tab" id="vt-day"   onclick="setView('day')">📌 Día</button>
+    </div>
+    <button class="btn-hoy" onclick="goToday()">⊙ Hoy</button>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:.68rem;color:rgba(255,255,255,.6)">
+      <div class="sync-dot" id="sync-dot"></div>
+      <span id="sync-lbl">Sin datos</span>
+    </div>
+  </div>
   <div class="filters">
     <span class="fl">Depto.</span>
     <div class="dep-wrap" style="position:relative">
@@ -320,11 +368,21 @@ textarea.fi{resize:vertical;min-height:64px}
       <option value="cancel">❌ Cancelada</option>
       <option value="pending">⏳ Pendiente</option>
     </select>
+    <span class="fl">Técnico</span>
+    <select class="fs-sm" id="f-tec" onchange="applyFilters()"><option value="">Todos</option></select>
+    <span class="fl">Material</span>
+    <select class="fs-sm" id="f-mat" onchange="applyFilters()">
+      <option value="">Todos</option>
+      <option value="completo">✅ Completo</option>
+      <option value="faltante">⛔ Faltante</option>
+      <option value="camino">🚚 En camino</option>
+    </select>
+    <input type="text" class="fi-search" id="f-txt" placeholder="🔍 Texto libre..." oninput="applyFilters()">
     <button class="btn btn-ghost btn-sm" onclick="clearFilters()">✕ Limpiar</button>
     <div class="mnav">
-      <button class="mnbtn" onclick="changeMonth(-1)">‹</button>
+      <button class="mnbtn" onclick="changeMonthAll(-1)">‹</button>
       <div id="mlbl">–</div>
-      <button class="mnbtn" onclick="changeMonth(1)">›</button>
+      <button class="mnbtn" onclick="changeMonthAll(1)">›</button>
     </div>
   </div>
   <!-- LEYENDA DEPARTAMENTOS con colores -->
@@ -340,12 +398,27 @@ textarea.fi{resize:vertical;min-height:64px}
     <div class="li"><div class="lsq" style="background:var(--pp)"></div>✏️ Actividad manual</div>
   </div>
 
-  <div class="cal-wrap">
+  <div id="view-month" class="cal-wrap">
     <div class="weekdays">
       <div class="wd">Dom</div><div class="wd">Lun</div><div class="wd">Mar</div>
       <div class="wd">Mié</div><div class="wd">Jue</div><div class="wd">Vie</div><div class="wd">Sáb</div>
     </div>
     <div class="cal-grid" id="cal-grid"></div>
+  </div>
+  <!-- Vista semanal -->
+  <div id="view-week" style="display:none">
+    <div class="week-grid" id="week-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:12px;max-width:1200px;margin:0 auto"></div>
+  </div>
+  <!-- Vista diaria -->
+  <div id="view-day" style="display:none">
+    <div style="padding:12px;max-width:900px;margin:0 auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <button onclick="changeDayView(-1)" style="background:var(--bgs);border:1.5px solid var(--bd);color:var(--gy);width:32px;height:32px;border-radius:50%;font-size:.9rem;cursor:pointer">‹</button>
+        <div id="day-view-title" style="font-size:1.05rem;font-weight:800;color:var(--pd)">–</div>
+        <button onclick="changeDayView(1)" style="background:var(--bgs);border:1.5px solid var(--bd);color:var(--gy);width:32px;height:32px;border-radius:50%;font-size:.9rem;cursor:pointer">›</button>
+      </div>
+      <div id="day-view-body" class="os-list"></div>
+    </div>
   </div>
 </div>
 
@@ -362,8 +435,9 @@ textarea.fi{resize:vertical;min-height:64px}
     </div>
     <div class="dp-body">
       <div class="tabs">
-        <button class="tab on" onclick="switchTab('os')"  id="tab-os">📋 Órdenes SF</button>
-        <button class="tab"    onclick="switchTab('act')" id="tab-act">✏️ Actividades</button>
+        <button class="tab on" onclick="switchTab('os')"   id="tab-os">📋 Órdenes SF</button>
+        <button class="tab"    onclick="switchTab('act')"  id="tab-act">✏️ Actividades</button>
+        <button class="tab"    onclick="switchTab('hist')" id="tab-hist">📜 Historial</button>
       </div>
       <div id="pn-os">
         <div style="display:flex;gap:7px;margin-bottom:10px;align-items:center">
@@ -372,6 +446,9 @@ textarea.fi{resize:vertical;min-height:64px}
           <button class="btn btn-pp btn-sm" onclick="openCreateOS()" style="flex-shrink:0;white-space:nowrap">➕ Crear OS</button>
         </div>
         <div class="os-list" id="os-list"></div>
+      </div>
+      <div id="pn-hist" style="display:none">
+        <div id="hist-list" style="max-height:60vh;overflow-y:auto"></div>
       </div>
       <div id="pn-act" style="display:none">
         <div class="os-list" id="act-list"></div>
@@ -685,6 +762,7 @@ function mostrarCalendario(nombre,ok,skip){
   if(sesion&&sesion.rol==='admin')document.getElementById('btn-nuevo').style.display='inline-flex';
   document.getElementById('slbl').textContent=ok+' OS · '+nombre;
   document.getElementById('sdot').className='sdot ok';
+  startSync();
 }
 function resetear(){
   if(!confirm('¿Cargar un nuevo archivo? Se borrará el actual.'))return;
@@ -702,10 +780,12 @@ function resetear(){
 // FILTROS — multiselect para departamentos
 function buildFilters(){
   const flat=Object.values(osIdx).flat();
-  const fill=(id,set,def='Todos')=>{const s=document.getElementById(id),pv=s.value;s.innerHTML=`<option value="">${def}</option>`;[...set].filter(Boolean).sort().forEach(v=>s.insertAdjacentHTML('beforeend',`<option>${v}</option>`));if(pv)s.value=pv;};
+  const fill=(id,set,def='Todos')=>{const s=document.getElementById(id);if(!s)return;const pv=s.value;s.innerHTML=`<option value="">${def}</option>`;[...set].filter(Boolean).sort().forEach(v=>s.insertAdjacentHTML('beforeend',`<option>${v}</option>`));if(pv)s.value=pv;};
   fill('f-cit',new Set(flat.map(e=>e.ci)),'Todas');
   fill('f-typ',new Set(flat.map(e=>e.tc)));
   fill('f-al', new Set(flat.map(e=>e.al)));
+  fill('f-tec',new Set(flat.map(e=>e.tec||e.op)));
+  allDeps=[...new Set(flat.map(e=>e.sta).filter(Boolean))].sort();
   selectedDeps.clear();
   buildDepList();
 }
@@ -714,6 +794,9 @@ function applyFilters(){
   const typ=document.getElementById('f-typ').value;
   const al=document.getElementById('f-al').value;
   const sta=document.getElementById('f-sta').value;
+  const tec=nrm(document.getElementById('f-tec')?document.getElementById('f-tec').value:'');
+  const mat=document.getElementById('f-mat')?document.getElementById('f-mat').value:'';
+  const txt=nrm(document.getElementById('f-txt')?document.getElementById('f-txt').value:'');
   filtOS={};
   Object.entries(osIdx).forEach(([date,evs])=>{
     const f=evs.filter(ev=>{
@@ -723,13 +806,19 @@ function applyFilters(){
       if(typ&&ev.tc!==typ)return false;
       if(al&&ev.al!==al)return false;
       if(sta&&ds!==sta)return false;
+      if(tec&&!nrm(ev.tec+' '+ev.op).includes(tec))return false;
+      if(mat&&(ev.mat||'')!==mat)return false;
+      if(txt){const full=nrm([ev.ci,ev.sta,ev.tc,ev.tn,ev.op,ev.tec,ev.al,ev.des,ev.obs,ev.cr,ev.co,ev.oid].join(' '));if(!full.includes(txt))return false;}
       return true;
     });
     if(f.length)filtOS[date]=f;
   });
-  renderCalendar();updateKPIs();if(selDate)renderDayContent(selDate);buildDepLegend();
+  if(currentView==='month') renderCalendar();
+  else if(currentView==='week') renderWeek();
+  else renderDayView();
+  updateKPIs();if(selDate)renderDayContent(selDate);buildDepLegend();
 }
-function clearFilters(){['f-cit','f-typ','f-al','f-sta'].forEach(id=>document.getElementById(id).value='');selectedDeps.clear();buildDepList();applyFilters();}
+function clearFilters(){['f-cit','f-typ','f-al','f-sta','f-tec','f-mat','f-txt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});selectedDeps.clear();buildDepList();applyFilters();}
 
 // KPIs
 function updateKPIs(){
@@ -857,10 +946,13 @@ function renderOS(key){
 function patch(oid,aid,fields){Object.values(osIdx).flat().forEach(ev=>{if(ev.oid===oid&&ev.aid===aid)Object.assign(ev,fields);});applyFilters();}
 async function saveEstado(oid,aid){
   const val=document.getElementById(`est-${oid}-${aid}`).value;
-  const quien=sesion?sesion.nombre:'';
+  const quien=sesion?sesion.nombre:'Usuario';
+  const evOld=Object.values(osIdx).flat().find(e=>e.oid===oid&&e.aid===aid);
+  const antes=evOld?evOld.em_m||evOld.st:'';
   patch(oid,aid,{em_m:val});
+  addHist('Cambió estado',oid,'Estado',antes,val);
   const d=await postGAS({action:'updateOSEstado',order_id:oid,assignee_id:aid,estado_manual:val});
-  toast(d.ok?`Estado guardado ✓ · ${quien}`:'Estado guardado (local)','ok');renderOS(selDate);
+  toast(d.ok?`Estado guardado ✓`:'Estado guardado (local)','ok');renderOS(selDate);
 }
 async function saveMat(oid,aid){
   const val=document.getElementById(`mat-${oid}-${aid}`).value;
@@ -870,10 +962,11 @@ async function saveMat(oid,aid){
 }
 async function saveNota(oid,aid){
   const val=document.getElementById(`nota-${oid}-${aid}`).value;
-  const quien=sesion?sesion.nombre:'';
+  const quien=sesion?sesion.nombre:'Usuario';
   patch(oid,aid,{nt_m:val});
+  addHist('Guardó nota',oid,'Nota','(anterior)',val.substring(0,60));
   const d=await postGAS({action:'updateOSNota',order_id:oid,assignee_id:aid,nota_manual:val});
-  toast(d.ok?`Nota guardada ✓ · ${quien}`:'Nota guardada (local)','ok');renderOS(selDate);
+  toast(d.ok?`Nota guardada ✓`:'Nota guardada (local)','ok');renderOS(selDate);
 }
 async function deleteOS(oid,aid){
   if(!confirm('¿Eliminar esta OS? No se puede deshacer.'))return;
@@ -951,6 +1044,220 @@ async function exportDayPNG(){
 }
 async function exportMonthPNG(){try{const cv=await html2canvas(document.querySelector('.cal-wrap'),{scale:2,useCORS:true,backgroundColor:'#fff'});const a=document.createElement('a');a.download=`calendario_${MESES[curM]}_${curY}.png`;a.href=cv.toDataURL('image/png');a.click();toast('Mes exportado 📷','ok');}catch(e){toast('Error al exportar','err');}}
 
+
+// ══ VISTAS ══
+let currentView = 'month'; // month | week | day
+let dayViewDate = new Date();
+
+function setView(v){
+  currentView = v;
+  ['month','week','day'].forEach(x=>{
+    document.getElementById('view-'+x).style.display = x===v?'block':'none';
+    document.getElementById('vt-'+x).classList.toggle('on', x===v);
+  });
+  // Actualizar nav label
+  if(v==='month') renderCalendar();
+  else if(v==='week') renderWeek();
+  else renderDayView();
+}
+
+function goToday(){
+  const now = new Date();
+  curY = now.getFullYear(); curM = now.getMonth();
+  dayViewDate = now;
+  if(currentView==='month') renderCalendar();
+  else if(currentView==='week') renderWeek();
+  else renderDayView();
+  updateKPIs();
+}
+
+// ══ VISTA SEMANAL ══
+function getWeekStart(date){
+  const d = new Date(date);
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+
+function renderWeek(){
+  const hl = {...holidays(curY-1),...holidays(curY),...holidays(curY+1)};
+  const ws = getWeekStart(new Date(curY, curM, 1));
+  const tok = dk(new Date());
+  const grid = document.getElementById('week-grid');
+  grid.innerHTML = '';
+  const mnav = document.getElementById('mlbl');
+
+  let label = '';
+  for(let d=0; d<7; d++){
+    const dt = new Date(ws); dt.setDate(ws.getDate()+d);
+    const key = dk(dt);
+    if(d===0) label = `${dt.getDate()} ${MESES[dt.getMonth()]}`;
+    if(d===6) label += ` – ${dt.getDate()} ${MESES[dt.getMonth()]} ${dt.getFullYear()}`;
+    const os = filtOS[key]||[], acts = actEv[key]||[], hol = hl[key];
+    const isToday = key===tok;
+    const chips = [...os.slice(0,8), ...acts.slice(0,2)].map(ev=>{
+      if(ev.color){const co=COLORS.find(c=>c.bg===ev.color)||COLORS[0];return`<div class="week-chip" style="background:${co.bg};color:${co.bar}" onclick="openDay('${key}')">✏️ ${ev.titulo}</div>`;}
+      const co=getDepColor(ev.sta);const sc=ST[dStat(ev)]||ST.pending;
+      return`<div class="week-chip" style="background:${co.bg};color:${co.text};border-left:2px solid ${co.bar}" onclick="openDay('${key}')">${sc.icon} ${ev.tc} ${ev.ci}</div>`;
+    }).join('');
+    grid.insertAdjacentHTML('beforeend',`<div class="week-col">
+      <div class="week-col-hdr ${isToday?'today-h':''}">
+        ${DIAS[dt.getDay()].substring(0,3)} ${dt.getDate()}${hol?`<br><span style="font-size:.55rem">🎉 ${hol}</span>`:''}
+      </div>
+      <div class="week-col-body" onclick="openDay('${key}')">${chips}
+        ${os.length+acts.length>0?`<div style="font-size:.58rem;color:#9CA3AF;padding:2px 4px">${os.length} OS ${acts.length?'+ '+acts.length+' act':''}</div>`:'<div style="font-size:.6rem;color:#D1D5DB;padding:6px;text-align:center">Sin OS</div>'}
+      </div>
+    </div>`);
+  }
+  if(mnav) mnav.textContent = label;
+}
+
+function changeWeek(dir){
+  const ws = getWeekStart(new Date(curY, curM, 1));
+  ws.setDate(ws.getDate() + dir*7);
+  curY = ws.getFullYear(); curM = ws.getMonth();
+  renderWeek(); updateKPIs();
+}
+
+// ══ VISTA DIARIA ══
+function renderDayView(){
+  const key = dk(dayViewDate);
+  const[y,m,d] = key.split('-').map(Number);
+  const hl = holidays(y);
+  const title = document.getElementById('day-view-title');
+  const body  = document.getElementById('day-view-body');
+  const mnav  = document.getElementById('mlbl');
+  if(title) title.textContent = `${DIAS[dayViewDate.getDay()]} ${d} de ${MESES[m-1]} ${y}${hl[key]?' 🎉':''}`;
+  if(mnav)  mnav.textContent  = `${MESES[m-1]} ${y}`;
+  curY = y; curM = m-1;
+  if(!body) return;
+  // Reutilizar renderOS pero en el contenedor del día
+  const os = filtOS[key]||[], acts = actEv[key]||[];
+  if(!os.length && !acts.length){body.innerHTML='<div class="empty-msg">Sin órdenes ni actividades para este día.</div>';return;}
+  selDate = key;
+  body.innerHTML = '';
+  // renderizar OS directamente
+  const tmpList = document.createElement('div');
+  tmpList.id = '__tmp_os__';
+  body.appendChild(tmpList);
+  const orig = selDate;
+  selDate = key;
+  const tmpId = 'os-list';
+  // swap trick
+  const realList = document.getElementById('os-list');
+  if(realList) realList.id = '__hidden_os__';
+  tmpList.id = 'os-list';
+  renderOS(key);
+  tmpList.id = '__day_view_os__';
+  if(realList) realList.id = 'os-list';
+  selDate = orig;
+}
+
+function changeDayView(dir){
+  dayViewDate.setDate(dayViewDate.getDate() + dir);
+  curY = dayViewDate.getFullYear(); curM = dayViewDate.getMonth();
+  renderDayView(); updateKPIs();
+}
+
+// ══ CAMBIO DE MES COMPATIBLE CON TODAS LAS VISTAS ══
+function changeMonthAll(dir){
+  if(currentView==='week'){changeWeek(dir*2);return;}
+  if(currentView==='day'){changeDayView(dir*7);return;}
+  changeMonth(dir);
+}
+
+// ══ HISTORIAL ══
+let historial = []; // {ts, quien, accion, oid, campo, antes, despues}
+
+function addHist(accion, oid, campo, antes, despues){
+  const quien = 'Usuario';
+  historial.unshift({ts:new Date().toISOString(), quien, accion, oid, campo, antes, despues});
+  if(historial.length > 200) historial.pop();
+  // Guardar en GAS
+  postGAS({action:'addHistorial', quien, accion, oid, campo, antes, despues, ts: new Date().toISOString()});
+}
+
+function renderHist(key){
+  const list = document.getElementById('hist-list');
+  if(!list) return;
+  const filtered = historial.filter(h => !key || h.oid?.includes(key) || true).slice(0,50);
+  if(!filtered.length){list.innerHTML='<div class="empty-msg">Sin historial para este día.</div>';return;}
+  list.innerHTML = filtered.map(h=>{
+    const dt = new Date(h.ts);
+    const hora = `${p2(dt.getHours())}:${p2(dt.getMinutes())}`;
+    const fecha = `${p2(dt.getDate())}/${p2(dt.getMonth()+1)}`;
+    return`<div class="hist-item">
+      <span class="hist-who">${h.quien}</span>
+      <span class="hist-time"> · ${fecha} ${hora}</span><br>
+      <span class="hist-action">${h.accion}${h.campo?' → <strong>'+h.campo+'</strong>':''}</span>
+      ${h.antes?`<br><span style="font-size:.65rem;color:#9CA3AF">Antes: ${h.antes} → Ahora: ${h.despues}</span>`:''}
+      ${h.oid?`<br><span style="font-size:.6rem;color:#C4B5FD;font-family:monospace">#${h.oid.slice(-8)}</span>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ══ TIEMPO REAL — polling cada 30 segundos ══
+let lastSync = 0;
+let syncInterval = null;
+let syncedChanges = {}; // {oid|aid: {em_m, mat, nt_m}}
+
+function startSync(){
+  if(syncInterval) return;
+  syncInterval = setInterval(syncFromGAS, 30000);
+  syncFromGAS(); // primera carga
+}
+
+async function syncFromGAS(){
+  const dot = document.getElementById('sync-dot');
+  const lbl = document.getElementById('sync-lbl');
+  if(dot) dot.className = 'sync-dot syncing';
+  try{
+    const r = await fetch(GAS_URL + '?action=getChanges&since=' + lastSync);
+    const data = await r.json();
+    if(data.ok && data.changes && data.changes.length > 0){
+      let updated = 0;
+      data.changes.forEach(ch => {
+        const key = ch.order_id + '|' + ch.assignee_id;
+        Object.values(osIdx).flat().forEach(ev => {
+          if(ev.oid === ch.order_id && ev.aid === ch.assignee_id){
+            if(ch.estado_manual !== undefined) ev.em_m = ch.estado_manual;
+            if(ch.material_estado !== undefined) ev.mat = ch.material_estado;
+            if(ch.nota_manual !== undefined) ev.nt_m = ch.nota_manual;
+            updated++;
+          }
+        });
+      });
+      if(updated > 0){
+        applyFilters();
+        if(selDate) renderOS(selDate);
+        if(lbl) lbl.textContent = `Sync: ${updated} cambios`;
+      }
+      lastSync = Date.now();
+    }
+    if(dot) dot.className = 'sync-dot synced';
+    if(lbl && !data.changes?.length) lbl.textContent = 'Sincronizado';
+  } catch(e){
+    if(dot) dot.className = 'sync-dot error';
+    if(lbl) lbl.textContent = 'Sin conexión';
+  }
+}
+
+// ══ OVERRIDE DE switchTab PARA INCLUIR HISTORIAL ══
+function switchTab(t){
+  activeTab=t;
+  document.getElementById('pn-os').style.display   = t==='os'?'block':'none';
+  document.getElementById('pn-act').style.display  = t==='act'?'block':'none';
+  document.getElementById('pn-hist').style.display = t==='hist'?'block':'none';
+  document.getElementById('tab-os').classList.toggle('on',   t==='os');
+  document.getElementById('tab-act').classList.toggle('on',  t==='act');
+  document.getElementById('tab-hist').classList.toggle('on', t==='hist');
+  if(selDate){
+    if(t==='os')   renderOS(selDate);
+    else if(t==='act')  renderActs(selDate);
+    else if(t==='hist') renderHist(selDate);
+  }
+}
+
+// ══ NAVEGACIÓN DE MES — botones ‹ › ahora son conscientes de la vista ══
 function setSync(s,msg){const dot=document.getElementById('sdot'),lbl=document.getElementById('slbl');if(s==='busy'){dot.className='sdot busy';lbl.textContent=msg||'Cargando…';}else if(s==='ok'){dot.className='sdot ok';lbl.textContent=msg||'Listo';}else{dot.className='sdot';lbl.textContent=msg||'Error';}}
 function setProg(pct,msg){const b=document.getElementById('prog-bar');if(pct===null){b.classList.remove('on');return;}b.classList.add('on');document.getElementById('pb-fill').style.width=pct+'%';document.getElementById('pb-msg').textContent=msg||'';document.getElementById('pb-pct').textContent=pct+'%';}
 function toast(msg,type=''){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(type?' '+type:'');setTimeout(()=>{t.className='toast';},3500);}
