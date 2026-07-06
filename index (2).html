@@ -213,39 +213,6 @@ textarea.fi{resize:vertical;min-height:64px}
 </head>
 <body>
 
-<!-- ══ LOGIN ══ -->
-<div id="login-screen" style="position:fixed;inset:0;background:linear-gradient(135deg,#501C7C 0%,#2952E3 100%);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px">
-  <div style="background:#fff;border-radius:20px;padding:40px 36px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.35);text-align:center">
-    <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:22px">
-      <svg height="26" viewBox="0 0 110 30" xmlns="http://www.w3.org/2000/svg">
-        <text x="0" y="24" font-family="Arial Black,sans-serif" font-size="24" font-weight="900" fill="#FF7900">ener</text>
-        <text x="54" y="24" font-family="Arial Black,sans-serif" font-size="24" font-weight="900" fill="#501C7C">Bit</text>
-      </svg>
-      <div style="width:1px;height:28px;background:#E5E7EB"></div>
-      <svg height="22" viewBox="0 0 90 22" xmlns="http://www.w3.org/2000/svg">
-        <rect width="22" height="22" rx="5" fill="#2952E3"/>
-        <path d="M5 4L5 18M5 11L17 4M5 11L17 18" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <text x="26" y="16" font-family="Arial,sans-serif" font-size="13" font-weight="700" fill="#2952E3">kantiA</text>
-      </svg>
-    </div>
-    <div style="font-size:1.1rem;font-weight:800;color:#344055;margin-bottom:5px">Calendario Operativo</div>
-    <div style="font-size:.78rem;color:#6B7280;margin-bottom:26px;line-height:1.55">Ingresa tus credenciales para acceder al sistema.</div>
-    <div style="margin-bottom:13px;text-align:left">
-      <label style="display:block;font-size:.72rem;font-weight:700;color:#344055;margin-bottom:4px">Usuario</label>
-      <input type="text" id="l-user" placeholder="Ej: jgonzalez" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"
-        style="width:100%;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:.88rem;font-family:inherit;color:#344055">
-    </div>
-    <div style="margin-bottom:13px;text-align:left">
-      <label style="display:block;font-size:.72rem;font-weight:700;color:#344055;margin-bottom:4px">Contraseña</label>
-      <input type="password" id="l-pass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"
-        style="width:100%;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:.88rem;font-family:inherit;color:#344055">
-    </div>
-    <button onclick="doLogin()" style="width:100%;padding:12px;background:linear-gradient(135deg,#501C7C,#7028AE);color:#fff;border:none;border-radius:10px;font-size:.88rem;font-weight:800;cursor:pointer;margin-top:4px;font-family:inherit">Ingresar →</button>
-    <div id="lerr" style="display:none;background:#FEE2E2;color:#991B1B;border-radius:8px;padding:8px 14px;font-size:.76rem;font-weight:700;margin-top:10px">Usuario o contraseña incorrectos</div>
-    <div style="font-size:.67rem;color:#9CA3AF;margin-top:18px">Acceso restringido · Solo personal autorizado</div>
-  </div>
-</div>
-
 <header>
   <div class="logo" style="gap:14px">
     <!-- Logo enerBit -->
@@ -271,11 +238,7 @@ textarea.fi{resize:vertical;min-height:64px}
     <button class="btn btn-ghost btn-sm" id="btn-export" style="display:none" onclick="exportMonthPNG()">📷 Exportar mes</button>
     <button class="btn btn-ghost btn-sm admin-only" id="btn-nuevo" style="display:none" onclick="resetear()">🔄 Nuevo archivo</button>
     <input type="file" id="file-input" accept=".xlsx,.xls,.csv" onchange="cargarArchivo(this.files[0])">
-    <!-- Badge usuario logueado -->
-    <div onclick="doLogout()" title="Cerrar sesión"
-      style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.13);padding:4px 11px;border-radius:20px;font-size:.69rem;color:#fff;cursor:pointer;white-space:nowrap">
-      👤 <span id="user-name">–</span> · Salir
-    </div>
+
   </div>
 </header>
 
@@ -563,32 +526,6 @@ textarea.fi{resize:vertical;min-height:64px}
 <script>
 'use strict';
 
-// ╔══════════════════════════════════════════════════════════╗
-// ║  USUARIOS — Modifica aquí para gestionar accesos         ║
-// ║  rol 'admin' → puede cargar Excel, resetear             ║
-// ║  rol 'user'  → ve calendario + edita estado/mat/notas   ║
-// ╚══════════════════════════════════════════════════════════╝
-const USUARIOS=[
-  {user:'admin',      pass:'enerbit2026',  rol:'admin', nombre:'Administrador'},
-  {user:'amesuarezv', pass:'campo2026',    rol:'admin', nombre:'Alex Suárez'},
-  {user:'supervisor', pass:'super2026',    rol:'admin', nombre:'Supervisor'},
-  {user:'operador1',  pass:'op2026',       rol:'user',  nombre:'Operador 1'},
-  {user:'operador2',  pass:'op2026',       rol:'user',  nombre:'Operador 2'},
-  {user:'operador3',  pass:'op2026',       rol:'user',  nombre:'Operador 3'},
-  {user:'campo1',     pass:'campo123',     rol:'user',  nombre:'Cuadrilla 1'},
-  {user:'campo2',     pass:'campo123',     rol:'user',  nombre:'Cuadrilla 2'},
-  {user:'campo3',     pass:'campo123',     rol:'user',  nombre:'Cuadrilla 3'},
-  {user:'campo4',     pass:'campo123',     rol:'user',  nombre:'Cuadrilla 4'},
-  {user:'campo5',     pass:'campo123',     rol:'user',  nombre:'Cuadrilla 5'},
-  {user:'kantia1',    pass:'kantia2026',   rol:'user',  nombre:'KantiA Técnico 1'},
-  {user:'kantia2',    pass:'kantia2026',   rol:'user',  nombre:'KantiA Técnico 2'},
-  {user:'mhev1',      pass:'mhev2026',     rol:'user',  nombre:'MHEV Técnico 1'},
-  {user:'mhev2',      pass:'mhev2026',     rol:'user',  nombre:'MHEV Técnico 2'},
-  {user:'cgm1',       pass:'cgm2026',      rol:'user',  nombre:'CGM Técnico'},
-  {user:'c3p1',       pass:'c3p2026',      rol:'user',  nombre:'C3 Pronto'},
-  {user:'oca1',       pass:'oca2026',      rol:'user',  nombre:'OCA Técnico'},
-];
-
 // GAS — guardar cambios compartidos en tiempo real
 const GAS_URL='https://script.google.com/macros/s/AKfycbxZkdKMqSDiY7tCT5Q6icGrvqlVdbzc2JwxjhA0IQzFLbdH2ic0YUBpOHYWZLv6u2x-/exec';
 async function postGAS(p){try{const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify(p),headers:{'Content-Type':'text/plain'}});return r.json();}catch(e){return{ok:false};}}
@@ -637,20 +574,9 @@ let sesion=null;
 let selectedDeps=new Set(),allDeps=[];
 let createEmpresa='eb';
 
-// ══ AUTH ══
-function doLogin(){
-  const user=document.getElementById('l-user').value.trim().toLowerCase();
-  const pass=document.getElementById('l-pass').value;
-  const err=document.getElementById('lerr');
-  const found=USUARIOS.find(u=>u.user===user&&u.pass===pass);
-  if(!found){err.style.display='block';document.getElementById('l-pass').value='';document.getElementById('l-pass').focus();return;}
-  err.style.display='none';sesion=found;
-  sessionStorage.setItem('cal_sesion',JSON.stringify(found));
-  iniciarApp();
-}
-function doLogout(){if(!confirm('¿Cerrar sesión?'))return;sesion=null;sessionStorage.removeItem('cal_sesion');location.reload();}
+// Acceso libre — sin login
 function iniciarApp(){
-  document.getElementById('login-screen').style.display='none';
+  
   document.getElementById('user-name').textContent=sesion.nombre;
   if(sesion.rol==='admin'){
     document.querySelectorAll('.admin-only').forEach(el=>el.style.display='inline-flex');
@@ -658,9 +584,9 @@ function iniciarApp(){
   buildColorPicker();
 }
 document.addEventListener('DOMContentLoaded',function(){
-  const saved=sessionStorage.getItem('cal_sesion');
-  if(saved){try{sesion=JSON.parse(saved);iniciarApp();}catch(e){sessionStorage.removeItem('cal_sesion');}}
-  else{setTimeout(()=>document.getElementById('l-user').focus(),100);}
+  // Acceso libre — no requiere login
+  sesion={user:'libre',pass:'',rol:'admin',nombre:'Usuario'};
+  iniciarApp();
 });
 document.addEventListener('click',function(e){if(!e.target.closest('.dep-wrap')&&!e.target.closest('#dep-drop'))closeDepDrop();});
 
@@ -1031,4 +957,3 @@ function toast(msg,type=''){const t=document.getElementById('toast');t.textConte
 </script>
 </body>
 </html>
-
