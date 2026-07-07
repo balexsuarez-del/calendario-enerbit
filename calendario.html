@@ -1104,12 +1104,14 @@ async function doSync() {
 // ── MULTISELECT ───────────────────────────────────────────────
 const msData = { dep:{all:[],sel:new Set()}, cit:{all:[],sel:new Set()} };
 
-function toggleMS(key) {
-  const drop=document.getElementById(`${key}-drop`);
-  const isOpen=drop.classList.contains('open');
-  ['dep','cit'].forEach(k=>document.getElementById(`${k}-drop`).classList.remove('open'));
+function toggleMS(key, event) {
+  if(event) event.stopPropagation();
+  const drop = document.getElementById(key + '-drop');
+  const isOpen = drop.classList.contains('open');
+  document.querySelectorAll('.ms-drop').forEach(function(d){ d.classList.remove('open'); });
   if(!isOpen) drop.classList.add('open');
 }
+
 function closeMSAll(key){document.getElementById(`${key}-drop`).classList.remove('open');}
 
 function buildMSList(key, items) {
