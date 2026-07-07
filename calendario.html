@@ -645,6 +645,70 @@ const USUARIOS=[
 
 // GAS — guardar cambios compartidos en tiempo real
 const GAS_URL='https://script.google.com/macros/s/AKfycbx4NbcshvWIY-VjIcyKiNKf0qzqOVyju7xzyWkJWY0yTWUuL4wcU-l5K3o9apgWePCO1w/exec';
+
+// ══ GITHUB AUTO-PUBLISH ══
+var GH_TOKEN = localStorage.getItem('gh_token')||'';
+const GH_REPO   = 'balexsuarez-del/calendario-enerbit';
+const GH_FILE   = 'calendario.html';
+const GH_API    = 'https://api.github.com/repos/'+GH_REPO+'/contents/'+GH_FILE;
+
+async function publicarEnGitHub(){
+  // Pedir token si no está guardado
+  if(!GH_TOKEN){
+    GH_TOKEN=prompt('Ingresa tu GitHub Token (ghp_...) para publicar los datos:','');
+    if(!GH_TOKEN){toast('Publicación cancelada','err');return;}
+    localStorage.setItem('gh_token',GH_TOKEN);
+  }
+  try{
+    var dot=document.getElementById('sdot2'),lbl=document.getElementById('sync-lbl');
+    if(dot) dot.className='sdot2 busy';
+    if(lbl) lbl.textContent='Publicando...';
+
+    // Obtener SHA del archivo actual
+    var r1=await fetch(GH_API,{headers:{'Authorization':'token '+GH_TOKEN,'Accept':'application/vnd.github.v3+json'}});
+    var meta=await r1.json();
+    var sha=meta.sha||'';
+
+    // Construir el bloque de datos a incrustar
+    var osData=JSON.stringify(osIdx);
+    var actData=JSON.stringify(actEv);
+    var dataBlock='<script id="__eb_d__">var __EMBED_OS__='+osData+';var __EMBED_ACT__='+actData+';<\/script>';
+
+    // Leer el archivo actual de GitHub
+    var rawURL='https://raw.githubusercontent.com/'+GH_REPO+'/main/'+GH_FILE;
+    var r0=await fetch(rawURL+'?t='+Date.now());
+    var baseHTML=await r0.text();
+
+    // Quitar bloque anterior si existe y agregar nuevo antes de </body>
+    var cleanHTML=baseHTML.split('<script id="__eb_d__">')[0];
+    var bodyClose=cleanHTML.lastIndexOf('<\/body>');
+    if(bodyClose<0) bodyClose=cleanHTML.lastIndexOf('</body>');
+    var newHTML=cleanHTML.substring(0,bodyClose)+dataBlock+cleanHTML.substring(bodyClose);
+
+    // Subir a GitHub
+    var encoded=btoa(unescape(encodeURIComponent(newHTML)));
+    var r2=await fetch(GH_API,{
+      method:'PUT',
+      headers:{'Authorization':'token '+GH_TOKEN,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},
+      body:JSON.stringify({message:'Datos OS '+new Date().toLocaleString('es-CO'),content:encoded,sha:sha})
+    });
+    if(r2.ok){
+      if(dot) dot.className='sdot2 ok';
+      if(lbl) lbl.textContent='Publicado OK';
+      toast('Datos publicados en GitHub. Todos veran el calendario actualizado en 1-2 min.','ok');
+    } else {
+      var err=await r2.json();
+      throw new Error(err.message||'Error '+r2.status);
+    }
+  }catch(e){
+    var d=document.getElementById('sdot2'),l=document.getElementById('sync-lbl');
+    if(d) d.className='sdot2 err';
+    if(l) l.textContent='Error al publicar';
+    toast('Error al publicar: '+e.message,'err');
+  }
+}
+
+
 async function postGAS(p){
   try{
     const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify(p),headers:{'Content-Type':'text/plain'}});
@@ -718,10 +782,29 @@ function iniciarApp(){
   buildColorPicker();
 }
 document.addEventListener('DOMContentLoaded',function(){
-  // Acceso libre — cargar datos desde Google Sheets automáticamente
   sesion={user:'libre',rol:'admin',nombre:'Usuario'};
   iniciarApp();
-  cargarDesdeGAS();
+  // Cargar datos incrustados si existen (publicados por el admin)
+  if(typeof __EMBED_OS__ !== 'undefined' && Object.keys(__EMBED_OS__).length > 0){
+    osIdx = __EMBED_OS__;
+    if(typeof __EMBED_ACT__ !== 'undefined') actEv = __EMBED_ACT__;
+    // Calcular totales
+    var total = Object.values(osIdx).flat().length;
+    depColorMap={};depColorIdx=0;
+    allDeps=[...new Set(Object.values(osIdx).flat().map(function(e){return e.sta;}).filter(Boolean))].sort();
+    allDeps.forEach(function(d){getDepColor(d);});
+    var firstDate=Object.keys(osIdx).sort()[0];
+    if(firstDate){var parts=firstDate.split('-').map(Number);curY=parts[0];curM=parts[1]-1;}
+    mostrarCalendario('Datos actualizados',total,0,function(){buildFilters();applyFilters();});
+    var lbl=document.getElementById('sync-lbl');
+    if(lbl) lbl.textContent='Datos del '+new Date().toLocaleDateString('es-CO');
+    var dot=document.getElementById('sdot2');
+    if(dot) dot.className='sdot2 ok';
+  } else {
+    // Sin datos incrustados — mostrar pantalla de carga
+    var lbl=document.getElementById('sync-lbl');
+    if(lbl) lbl.textContent='Sin datos';
+  }
 });
 
 // Cargar OS desde Google Sheets usando JSONP (resuelve CORS)
@@ -1000,6 +1083,8 @@ function mostrarCalendario(nombre,ok,skip,callback){
     updateKPIs();
     startSync();
     toast('✓ '+ok+' órdenes cargadas','ok');
+    // Publicar automáticamente en GitHub para que todos vean los datos
+    setTimeout(function(){ publicarEnGitHub(); }, 500);
   },100);
 }
 function resetear(){
