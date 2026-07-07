@@ -359,7 +359,7 @@ textarea.fi{resize:vertical;min-height:60px}
   <div class="filter-group">
     <span class="filter-label">Depto.</span>
     <div class="ms-wrap" id="dep-wrap">
-      <button class="ms-btn" onclick="toggleMS('dep')">
+      <button class="ms-btn" onclick="toggleMS('dep',event)">
         <span id="dep-lbl">Todos</span>
         <span class="ms-count" id="dep-cnt" style="display:none">0</span> ▾
       </button>
@@ -378,7 +378,7 @@ textarea.fi{resize:vertical;min-height:60px}
   <div class="filter-group">
     <span class="filter-label">Ciudad</span>
     <div class="ms-wrap" id="cit-wrap">
-      <button class="ms-btn" onclick="toggleMS('cit')">
+      <button class="ms-btn" onclick="toggleMS('cit',event)">
         <span id="cit-lbl">Todas</span>
         <span class="ms-count" id="cit-cnt" style="display:none">0</span> ▾
       </button>
@@ -838,7 +838,7 @@ document.addEventListener('DOMContentLoaded', function() {
     showCalScreen();
     buildFilters();
     applyFilters();
-    setSyncUI('ok', flat.length + ' OS · Julio 2026');
+    setSyncUI('ok', flat.length + ' OS cargadas');
     startSync();
     return; // No cargar desde GAS si hay datos incrustados
   }
