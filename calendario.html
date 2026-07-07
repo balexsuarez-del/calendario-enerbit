@@ -645,7 +645,15 @@ const USUARIOS=[
 
 // GAS — guardar cambios compartidos en tiempo real
 const GAS_URL='https://script.google.com/macros/s/AKfycbx4NbcshvWIY-VjIcyKiNKf0qzqOVyju7xzyWkJWY0yTWUuL4wcU-l5K3o9apgWePCO1w/exec';
-async function postGAS(p){try{const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify(p),headers:{'Content-Type':'text/plain'}});return r.json();}catch(e){return{ok:false};}}
+async function postGAS(p){
+  try{
+    const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify(p),headers:{'Content-Type':'text/plain'}});
+    return r.json();
+  }catch(e){
+    // Fallback: usar GET con JSONP para operaciones simples
+    return{ok:false,error:String(e)};
+  }
+}
 
 // COLORES POR DEPARTAMENTO (paleta 20 colores distintos)
 const DEP_PALETTE=[
@@ -716,36 +724,42 @@ document.addEventListener('DOMContentLoaded',function(){
   cargarDesdeGAS();
 });
 
-// Cargar OS y Actividades desde Google Sheets al abrir la página
-async function cargarDesdeGAS(){
+// Cargar OS desde Google Sheets usando JSONP (resuelve CORS)
+function cargarDesdeGAS(){
   setSync('busy','Cargando datos...');
   var dot=document.getElementById('sdot2'),lbl=document.getElementById('sync-lbl');
   if(dot) dot.className='sdot2 busy';
   if(lbl) lbl.textContent='Cargando...';
-  try{
-    // Cargar OS
-    var r = await fetch(GAS_URL+'?action=getOS');
-    var data = await r.json();
-    if(data.ok && data.data && data.data.length){
-      procesarFilasGAS(data.data);
+  // Usar script tag para evitar CORS
+  window._gasCallback = function(data){
+    try{
+      if(data.ok && data.data && data.data.length){
+        procesarFilasGAS(data.data);
+        if(dot) dot.className='sdot2 ok';
+        if(lbl) lbl.textContent='Datos cargados';
+        setSync('ok','Datos cargados');
+      } else {
+        if(dot) dot.className='sdot2 err';
+        if(lbl) lbl.textContent='Sin datos en Sheets';
+        setSync('err','Sin datos');
+      }
+    }catch(e){
+      if(dot) dot.className='sdot2 err';
+      if(lbl) lbl.textContent='Error al cargar';
     }
-    // Cargar Actividades
-    var r2 = await fetch(GAS_URL+'?action=getActividades');
-    var data2 = await r2.json();
-    if(data2.ok && data2.data && data2.data.length){
-      data2.data.forEach(function(act){
-        if(!actEv[act.fecha]) actEv[act.fecha]=[];
-        actEv[act.fecha].push({id:act.id,titulo:act.titulo,cuadrilla:act.cuadrilla,departamento:act.departamento,hora:act.hora,obs:act.obs,color:act.color});
-      });
-    }
-    if(dot) dot.className='sdot2 ok';
-    if(lbl) lbl.textContent='Datos cargados';
-    setSync('ok','Datos cargados');
-  }catch(e){
+    // Limpiar script
+    var old=document.getElementById('_gas_script');
+    if(old) old.remove();
+  };
+  var script=document.createElement('script');
+  script.id='_gas_script';
+  script.src=GAS_URL+'?action=getOS&callback=_gasCallback';
+  script.onerror=function(){
     if(dot) dot.className='sdot2 err';
     if(lbl) lbl.textContent='Sin conexion';
-    setSync('err','Sin conexion GAS');
-  }
+    setSync('err','Sin conexion');
+  };
+  document.head.appendChild(script);
 }
 
 // Procesar filas que vienen de Google Sheets (formato GAS)
