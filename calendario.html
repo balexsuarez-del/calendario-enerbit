@@ -838,8 +838,9 @@ document.addEventListener('DOMContentLoaded', function() {
     showCalScreen();
     buildFilters();
     applyFilters();
-    setSyncUI('ok', flat.length + ' OS cargadas');
+    setSyncUI('ok', flat.length + ' OS · Julio 2026');
     startSync();
+    return; // No cargar desde GAS si hay datos incrustados
   }
   buildColorPicker();
   document.addEventListener('click', e => {
@@ -1096,7 +1097,7 @@ async function doSync() {
       setSyncUI('ok','Al día');
     }
   } catch(e) {
-    setSyncUI('err','Sin conexión');
+    setSyncUI('err','GAS offline - datos locales OK');
   }
 }
 
@@ -1113,29 +1114,38 @@ function closeMSAll(key){document.getElementById(`${key}-drop`).classList.remove
 
 function buildMSList(key, items) {
   msData[key].all = items;
-  const list = document.getElementById(`${key}-list`);
+  const list = document.getElementById(key+'-list');
+  if(!list) return;
   list.innerHTML = '';
-  items.forEach(item => {
+  items.forEach(function(item) {
     const div = document.createElement('div');
     div.className = 'ms-item';
     div.dataset.val = item;
     const checked = msData[key].sel.size===0 || msData[key].sel.has(item);
     const cb = document.createElement('input');
-    cb.type='checkbox'; cb.checked=checked;
-    cb.addEventListener('change', function(){
-      if(this.checked) msData[key].sel.add(item);
-      else msData[key].sel.delete(item);
-      updateMSBtn(key); applyFilters();
-    });
+    cb.type = 'checkbox';
+    cb.checked = checked;
+    // Closure para capturar item correctamente
+    (function(it){
+      cb.addEventListener('change', function(){
+        if(this.checked) msData[key].sel.add(it);
+        else msData[key].sel.delete(it);
+        updateMSBtn(key);
+        applyFilters();
+      });
+    })(item);
     if(key==='dep') {
-      const co=depColor(item);
-      const dot=document.createElement('div');
-      dot.className='ms-dot'; dot.style.background=co.bar;
-      div.appendChild(cb); div.appendChild(dot);
+      const co = depColor(item);
+      const dot = document.createElement('div');
+      dot.className = 'ms-dot';
+      dot.style.background = co.bar;
+      div.appendChild(cb);
+      div.appendChild(dot);
     } else {
       div.appendChild(cb);
     }
-    const sp=document.createElement('span'); sp.textContent=item;
+    const sp = document.createElement('span');
+    sp.textContent = item;
     div.appendChild(sp);
     list.appendChild(div);
   });
