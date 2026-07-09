@@ -291,6 +291,24 @@ textarea.fi{resize:vertical;min-height:60px}
 }
 
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* OS KANTIA */
+.os-card.kantia { border-color:#93C5FD!important; background:#EFF6FF!important; }
+.os-card.kantia .os-stripe { background:#2563EB!important; }
+/* OS CON CAMBIOS */
+.os-card.changed { border-color:#F59E0B!important; background:#FFFBEB!important; box-shadow:0 0 0 2px rgba(245,158,11,.35)!important; }
+.os-card.changed .os-stripe { background:#F59E0B!important; animation:stripeFlash 1.2s infinite; }
+@keyframes stripeFlash { 0%,100%{opacity:1} 50%{opacity:.3} }
+.changed-badge { display:inline-flex;align-items:center;gap:3px;background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;font-size:.6rem;font-weight:700;padding:2px 7px;border-radius:9px;animation:badgePulse 1.5s infinite; }
+@keyframes badgePulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }
+.read-btn-wrap { display:flex;gap:5px;margin-top:6px;flex-wrap:wrap;align-items:center; }
+.read-btn { border:none;border-radius:9px;padding:3px 10px;font-size:.65rem;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s; }
+.read-btn:hover { opacity:.8; }
+.read-eb { background:#EDE9FE;color:#501C7C; }
+.read-al { background:#D1FAE5;color:#065F46; }
+.read-kt { background:#DBEAFE;color:#1E40AF; }
+.read-done { background:#F3F4F6;color:#9CA3AF;text-decoration:line-through; }
+
 </style>
 </head>
 <body>
@@ -748,6 +766,39 @@ let currentView='month', dayViewDate=new Date();
 let lastSyncTs=0, syncTimer=null;
 let empresa='eb';
 
+
+// ══ SISTEMA CAMBIOS Y LECTURAS ══
+var changedOS = {};
+try { changedOS = JSON.parse(localStorage.getItem('changedOS') || '{}'); } catch(e) {}
+
+function markChanged(oid, aid, campo) {
+  var key = oid + '|' + aid;
+  changedOS[key] = { campo: campo, ts: Date.now(), readBy: [] };
+  saveChanged();
+}
+function markRead(oid, aid, quien) {
+  var key = oid + '|' + aid;
+  if(!changedOS[key]) return;
+  if(!changedOS[key].readBy) changedOS[key].readBy = [];
+  if(!changedOS[key].readBy.includes(quien)) changedOS[key].readBy.push(quien);
+  if(['eB','kT','Aliado'].every(function(r){ return changedOS[key].readBy.includes(r); })) {
+    delete changedOS[key];
+  }
+  saveChanged();
+  if(selDate) renderOSList(selDate);
+  applyFilters();
+  toast(quien + ' marco como leida', 'ok');
+}
+function isChanged(oid, aid) { return !!(changedOS[oid + '|' + aid]); }
+function getReadBy(oid, aid) { return (changedOS[oid + '|' + aid] || {}).readBy || []; }
+function saveChanged() {
+  try { localStorage.setItem('changedOS', JSON.stringify(changedOS)); } catch(e) {}
+}
+function isKantiA(ev) {
+  var al = (ev.al || '').toLowerCase();
+  var em = (ev.em || '').toLowerCase();
+  return al.includes('kantia') || al.includes('kanti') || em.includes('kantia');
+}
 // ── GAS: JSONP ───────────────────────────────────────────────
 function gasGet(params) {
   return new Promise((resolve, reject) => {
@@ -1328,11 +1379,15 @@ function renderCalendar() {
     else if(pEvs.length)              cls+=' has-pend';
     const pb=pEvs.length?`<div class="d-pend">⏳${pEvs.length}</div>`:'';
     const shown=[...os.slice(0,2),...acts.slice(0,1)];
-    const chips=shown.map(ev=>{
-      if(ev.color){const co=ACT_COLORS.find(c=>c.bg===ev.color)||ACT_COLORS[0];return`<div class="chip" style="background:${co.bg};color:${co.bar}">✏ ${ev.titulo}</div>`;}
-      const co=depColor(ev.sta); const sc=ST[calcStatus(ev)]||ST.pending;
-      return`<div class="chip" style="background:${co.bg};color:${co.text};border-left:2px solid ${co.bar}">${sc.icon} ${ev.tc} ${ev.ci}</div>`;
-    }).join('');
+    const chips=shown.map(function(ev){
+      if(ev.color){var co=ACT_COLORS.find(function(c){return c.bg===ev.color;})||ACT_COLORS[0];return '<div class="chip" style="background:'+co.bg+';color:'+co.bar+'">Act '+ev.titulo+'</div>';}
+      var chg=isChanged(ev.oid,ev.aid);
+      var kt=isKantiA(ev);
+      var co=chg?{bg:'#FEF3C7',text:'#92400E',bar:'#F59E0B'}:kt?{bg:'#DBEAFE',text:'#1E40AF',bar:'#2563EB'}:depColor(ev.sta);
+      var sc=ST[calcStatus(ev)]||ST.pending;
+      var prefix=chg?'&#x1F514; ':kt?'K ':sc.icon+' ';
+      return '<div class="chip" style="background:'+co.bg+';color:'+co.text+';border-left:2px solid '+co.bar+'">'+prefix+ev.tc+' '+ev.ci+'</div>';
+    }).join('');;
     const tot=os.length+acts.length;
     const more=tot>3?`<div class="chip-more">+${tot-3} más</div>`:'';
     const holHtml=hol?`<div class="d-hol">🎉 ${hol}</div>`:'';
@@ -1450,61 +1505,71 @@ function renderOSList(key) {
 }
 
 function osCardHTML(ev, key) {
-  const ds=calcStatus(ev), sc=ST[ds]||ST.pending;
-  const co=depColor(ev.sta), mat=MAT[ev.mat||'']||MAT[''];
-  const isR=ds==='reprog', isC=ds==='cancel';
-  let mot='';
+  var ds=calcStatus(ev), sc=ST[ds]||ST.pending;
+  var co=depColor(ev.sta), mat=MAT[ev.mat||'']||MAT[''];
+  var isR=ds==='reprog', isC=ds==='cancel';
+  var kt=isKantiA(ev);
+  var chg=isChanged(ev.oid, ev.aid);
+  var readBy=getReadBy(ev.oid, ev.aid);
+  var cardCls='os-card '+(chg?'changed':kt?'kantia':sc.card);
+  var mot='';
   if((isR||isC)&&(ev.cr||ev.co)){
-    mot=`<div class="motivo ${isR?'rpg':'cnl'}"><strong>${ev.cr||''}</strong>${ev.co&&ev.co!==ev.cr?`<br><small>${ev.co.substring(0,200)}</small>`:''}</div>`;
+    mot='<div class="motivo '+(isR?'rpg':'cnl')+'"><strong>'+(ev.cr||'')+'</strong>'+(ev.co&&ev.co!==ev.cr?'<br><small>'+ev.co.substring(0,200)+'</small>':'')+'</div>';
   }
-  const estOpts=['',...Object.keys(ST)].map(v=>{
-    const s=v?ST[v]:null;
-    return`<option value="${v}"${ev.em_m===v?' selected':''}}>${s?s.icon+' '+s.label:'– Sin override –'}</option>`;
+  var changeBadge=chg?'<span class="changed-badge">&#x1F514; Cambio: '+(changedOS[ev.oid+'|'+ev.aid]||{}).campo+'</span>':'';
+  var ktSvg=kt?'<svg width="14" height="14" viewBox="0 0 22 22" style="flex-shrink:0"><rect width="22" height="22" rx="4" fill="#2563EB"/><path d="M4 3L4 19M4 11L16 3M4 11L16 19" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>':'';
+  var estOpts=[''].concat(Object.keys(ST)).map(function(v){
+    var s=v?ST[v]:null;
+    return '<option value="'+v+'"'+(ev.em_m===v?' selected':'')+'>'+(s?s.icon+' '+s.label:'Sin override')+'</option>';
   }).join('');
-  const matOpts=Object.entries(MAT).map(([v,m])=>`<option value="${v}"${(ev.mat||'')===v?' selected':''}}>${m.label}</option>`).join('');
-  const depTag=`<span class="tag" style="background:${co.bg};color:${co.text};border:1px solid ${co.bar}40">◼ ${ev.sta}</span>`;
-  return`<div class="os-card ${sc.card}" draggable="true" ondragstart="dDragStart(event,'${ev.oid}','${ev.aid}','${key}')">
-    <div class="os-stripe" style="background:${sc.bar}"></div>
-    <div class="os-body">
-      <div class="os-head">
-        <span class="os-type">${sc.icon} ${ev.tc||'–'}</span>
-        ${ev.ti?`<span class="os-time">⏰${ev.ti}</span>`:''}
-        <span class="os-id">#${(ev.oid||''). slice(-8)}</span>
-      </div>
-      <div class="os-loc">📍 ${ev.ci||'–'}, ${ev.sta||''}${ev.dir?' — '+ev.dir:''}<br>👷 ${ev.op||'–'}${ev.cert?'<br>📄 Acta: '+ev.cert:''}</div>
-      ${ev.des?`<div class="os-obs">${ev.des}</div>`:''}
-      ${ev.obs?`<div class="os-obs">${ev.obs}</div>`:''}
-      ${mot}
-      <div class="os-tags">
-        <span class="tag ${sc.tag}">${sc.icon} ${sc.label}</span>
-        ${depTag}
-        <span class="tag" style="background:#EDE9FE;color:#501C7C">◼ ${ev.al}</span>
-        ${ev.mat?`<span class="tag" style="background:${mat.bg};color:${mat.cl}">${mat.label}</span>`:''}
-      </div>
-      ${ev.nt_m?`<div class="os-nota">📌 ${ev.nt_m}</div>`:''}
-      <div class="edit-section">
-        <div class="edit-row">
-          <label>Estado</label>
-          <select class="edit-select" id="est-${ev.oid}-${ev.aid}">${estOpts}</select>
-          <button class="save-btn" onclick="saveEstado('${ev.oid}','${ev.aid}')">💾</button>
-        </div>
-        <div class="edit-row">
-          <label>Material</label>
-          <select class="edit-select" id="mat-${ev.oid}-${ev.aid}">${matOpts}</select>
-          <button class="save-btn" onclick="saveMaterial('${ev.oid}','${ev.aid}')">💾</button>
-        </div>
-        <div class="nota-wrap">
-          <textarea id="nota-${ev.oid}-${ev.aid}" placeholder="Escribe una nota sobre esta OS...">${ev.nt_m||''}</textarea>
-          <div class="nota-actions">
-            <button class="btn btn-secondary btn-sm" onclick="saveNota('${ev.oid}','${ev.aid}')">💾 Guardar nota</button>
-            <button class="btn btn-secondary btn-sm" onclick="openMvModal('${ev.oid}','${ev.aid}','${key}')">📅 Nueva fecha</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteOS('${ev.oid}','${ev.aid}')">🗑 Eliminar</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>`;
+  var matOpts=Object.entries(MAT).map(function(e){
+    return '<option value="'+e[0]+'"'+((ev.mat||'')===e[0]?' selected':'')+'>'+e[1].label+'</option>';
+  }).join('');
+  var depTag='<span class="tag" style="background:'+co.bg+';color:'+co.text+';border:1px solid '+co.bar+'40">&#9632; '+ev.sta+'</span>';
+  var readBtns=chg?('<div class="read-btn-wrap"><span style="font-size:.63rem;color:#92400E;font-weight:600">Leido por:</span>'+
+    ['eB','kT','Aliado'].map(function(r){
+      var done=readBy.includes(r);
+      var cls='read-btn '+(r==='eB'?'read-eb':r==='kT'?'read-kt':'read-al')+(done?' read-done':'');
+      return '<button class="'+cls+'" onclick="markRead(\''+ev.oid+'\',\''+ev.aid+'\',\''+r+'\')">'+(done?'&#10003; ':'')+r+'</button>';
+    }).join('')+'</div>'):'';
+  return '<div class="'+cardCls+'" draggable="true" ondragstart="dDragStart(event,\''+ev.oid+'\',\''+ev.aid+'\',\''+key+'\')">'+
+    '<div class="os-stripe"></div>'+
+    '<div class="os-body">'+
+      '<div class="os-head">'+ktSvg+'<span class="os-type">'+sc.icon+' '+(ev.tc||'')+'</span>'+
+        (ev.ti?'<span class="os-time">&#9200;'+ev.ti+'</span>':'')+
+        '<span class="os-id">#'+(ev.oid||'').slice(-8)+'</span>'+changeBadge+
+      '</div>'+
+      '<div class="os-loc">&#128205; '+(ev.ci||'')+(ev.sta?', '+ev.sta:'')+(ev.dir?' - '+ev.dir:'')+
+        '<br>&#128119; '+(ev.op||'')+(ev.cert?'<br>&#128196; Acta: '+ev.cert:'')+'</div>'+
+      (ev.des?'<div class="os-obs">'+ev.des+'</div>':'')+
+      (ev.obs?'<div class="os-obs">'+ev.obs+'</div>':'')+
+      mot+
+      '<div class="os-tags"><span class="tag '+sc.tag+'">'+sc.icon+' '+sc.label+'</span>'+depTag+
+        '<span class="tag" style="background:#EDE9FE;color:#501C7C">&#9632; '+(ev.al||'')+'</span>'+
+        (kt?'<span class="tag" style="background:#DBEAFE;color:#1E3A8A;border:1px solid #93C5FD">K kantiA</span>':'')+
+        (ev.mat?'<span class="tag" style="background:'+mat.bg+';color:'+mat.cl+'">'+mat.label+'</span>':'')+
+      '</div>'+
+      (ev.nt_m?'<div class="os-nota">&#128204; '+ev.nt_m+'</div>':'')+
+      readBtns+
+      '<div class="edit-section">'+
+        '<div class="edit-row"><label>Estado</label>'+
+          '<select class="edit-select" id="est-'+ev.oid+'-'+ev.aid+'">'+estOpts+'</select>'+
+          '<button class="save-btn" onclick="saveEstado(\''+ev.oid+'\',\''+ev.aid+'\')">&#128190;</button></div>'+
+        '<div class="edit-row"><label>Material</label>'+
+          '<select class="edit-select" id="mat-'+ev.oid+'-'+ev.aid+'">'+matOpts+'</select>'+
+          '<button class="save-btn" onclick="saveMaterial(\''+ev.oid+'\',\''+ev.aid+'\')">&#128190;</button></div>'+
+        '<div class="nota-wrap">'+
+          '<textarea id="nota-'+ev.oid+'-'+ev.aid+'" placeholder="Escribe una nota...">'+(ev.nt_m||'')+'</textarea>'+
+          '<div class="nota-actions">'+
+            '<button class="btn btn-secondary btn-sm" onclick="saveNota(\''+ev.oid+'\',\''+ev.aid+'\')">&#128190; Guardar nota</button>'+
+            '<button class="btn btn-secondary btn-sm" onclick="openMvModal(\''+ev.oid+'\',\''+ev.aid+'\',\''+key+'\')">&#128197; Nueva fecha</button>'+
+            '<button class="btn btn-danger btn-sm" onclick="deleteOS(\''+ev.oid+'\',\''+ev.aid+'\')">&#128465; Eliminar</button>'+
+          '</div></div>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
 }
+
 
 // ── GUARDAR CAMBIOS ───────────────────────────────────────────
 function patchOS(oid, aid, fields) {
