@@ -1073,13 +1073,19 @@ function loadFile(file) {
 }
 
 function processExcelRows(rows, nombre) {
-  // Preservar notas y material
+  // Preservar notas, estado manual y material usando OID como clave
   const preserved={};
-  Object.values(osIdx).flat().forEach(ev=>{
-    const key=ev.oid+'|'+ev.aid;
-    if(ev.em_m||ev.nt_m||ev.mat) preserved[key]={em_m:ev.em_m,nt_m:ev.nt_m,mat:ev.mat};
+  Object.values(osIdx).flat().forEach(function(ev){
+    // Guardar por oid solo (mas robusto entre formatos de Excel)
+    if(ev.oid && (ev.em_m||ev.nt_m||ev.mat)) {
+      preserved[ev.oid]={em_m:ev.em_m||'', nt_m:ev.nt_m||'', mat:ev.mat||''};
+    }
   });
+  // Preservar tambien actividades
+  const preservedActs = JSON.parse(JSON.stringify(actEv));
   osIdx={}; depColorMap={}; depColorIdx=0;
+  // Restaurar actividades que no vienen del Excel
+  Object.assign(actEv, preservedActs);
   let ok=0, skip=0;
   const gasRows=[];
   rows.forEach(row=>{
@@ -1090,7 +1096,7 @@ function processExcelRows(rows, nombre) {
     const oid=row['ORDER_ID']||row['order_id']||row['ID ORDEN']||'';
     const aid=row['ASSIGNEE_ID']||row['assignee_id']||oid+'-a'||'';
     const key=oid+'|'+aid;
-    const prev=preserved[key]||{};
+    const prev=preserved[oid]||{};
     const ev={
       oid, aid, fecha,
       st: row['STATUS']||row['status']||mapEstado(row['ESTADO DE LA ORDEN']||'')||'',
