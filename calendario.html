@@ -960,13 +960,26 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // 3. Si no hay localStorage, usar datos incrustados __OS__
   if(typeof __OS__ !== 'undefined' && __OS__ && Object.keys(__OS__).length > 0) {
-    // Expandir formato compacto
+    var AL={eB:'enerBit',CE:'Circuitos Eléctricas',C3:'C3 Pronto Servicios',MH:'MHEV Ingeniería',VG:'Valgaro',CG:'CGM Support',OC:'OCA Global',kT:'KantiA'};
+    var ST={D:'done',C:'cancel',R:'reprog',P:'pending'};
     var expanded = {};
     Object.entries(__OS__).forEach(function(entry) {
       var fecha = entry[0], evs = entry[1];
       expanded[fecha] = evs.map(function(ev) {
-        if(ev.oid) return ev; // ya expandido
-        return {oid:ev.o,aid:ev.a,st:(__ST__||{})[ev.s]||ev.s||'pending',em_m:'',ci:ev.c,sta:ev.d,tc:ev.t,tn:ev.t,op:ev.p,em:'',al:(__AL__||{})[ev.l]||ev.l||'enerBit',tec:ev.p,dir:ev.r,cert:'',des:'',obs:'',cr:ev.x||'',co:'',ti:ev.f,nt_m:'',mat:''};
+        if(ev.oid) return ev; // formato completo, ya expandido
+        // formato compacto con claves cortas
+        return {
+          oid:ev.o||'', aid:ev.a||'',
+          st:ST[ev.s]||'pending', em_m:'',
+          ci:ev.c||'', sta:ev.d||'',
+          tc:ev.t||'', tn:ev.t||'',
+          op:ev.p||'', em:'',
+          al:AL[ev.l]||'enerBit',
+          tec:ev.p||'', dir:ev.r||'',
+          cert:'', des:'', obs:'',
+          cr:ev.x||'', co:'',
+          ti:ev.f||'', nt_m:'', mat:''
+        };
       });
     });
     loadOsData(expanded);
@@ -1953,8 +1966,9 @@ async function saveActForm(){
   if(editActId){const i=actEv[selDate].findIndex(e=>e.id===editActId);if(i>=0)actEv[selDate][i]=act;}
   else actEv[selDate].push(act);
   clearActForm(); renderActList(selDate); updateKPIs(); renderCalendar();
+  saveToLocalStorage();
   const d=await gasPost({action:'saveActividad',...act});
-  toast(editActId?'Actividad actualizada ✓':' Actividad guardada ✓','ok');
+  toast(editActId?'Actividad actualizada ✓':'Actividad guardada ✓','ok');
 }
 
 async function deleteAct(id){
