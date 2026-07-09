@@ -1019,8 +1019,32 @@ function processRowsFromGAS(rows) {
       ti:row.hora||'',
       nt_m:row.nota||'', mat:row.material||'',
     };
+    // Upsert: si la OS ya existe en esa fecha, actualizar; si no, agregar
     if(!osIdx[fecha]) osIdx[fecha]=[];
-    osIdx[fecha].push(ev);
+    const existingIdx = osIdx[fecha].findIndex(function(e){ return e.oid===ev.oid; });
+    if(existingIdx >= 0) {
+      // Actualizar datos del sistema conservando anotaciones manuales
+      const existing = osIdx[fecha][existingIdx];
+      ev.em_m = existing.em_m || ev.em_m;
+      ev.nt_m = existing.nt_m || ev.nt_m;
+      ev.mat  = existing.mat  || ev.mat;
+      osIdx[fecha][existingIdx] = ev;
+    } else {
+      // OS nueva o movida de fecha - verificar si estaba en otra fecha
+      var oldEntry = prevMap[ev.oid];
+      if(oldEntry && oldEntry.fecha !== fecha) {
+        // Estaba en otra fecha - remover de la fecha anterior
+        if(osIdx[oldEntry.fecha]) {
+          osIdx[oldEntry.fecha] = osIdx[oldEntry.fecha].filter(function(e){ return e.oid !== ev.oid; });
+          if(osIdx[oldEntry.fecha].length === 0) delete osIdx[oldEntry.fecha];
+        }
+        // Preservar anotaciones
+        ev.em_m = oldEntry.ev.em_m || ev.em_m;
+        ev.nt_m = oldEntry.ev.nt_m || ev.nt_m;
+        ev.mat  = oldEntry.ev.mat  || ev.mat;
+      }
+      osIdx[fecha].push(ev);
+    }
     if(ev.sta) depColor(ev.sta);
   });
   const firstDate = Object.keys(osIdx).sort()[0];
@@ -1073,19 +1097,23 @@ function loadFile(file) {
 }
 
 function processExcelRows(rows, nombre) {
-  // Preservar notas, estado manual y material usando OID como clave
-  const preserved={};
-  Object.values(osIdx).flat().forEach(function(ev){
-    // Guardar por oid solo (mas robusto entre formatos de Excel)
-    if(ev.oid && (ev.em_m||ev.nt_m||ev.mat)) {
-      preserved[ev.oid]={em_m:ev.em_m||'', nt_m:ev.nt_m||'', mat:ev.mat||''};
-    }
+  // ACTUALIZACIÓN INCREMENTAL:
+  // - OS existente: actualiza datos del sistema, conserva nota/estado/material
+  // - OS nueva: se agrega
+  // - OS que ya no está en el Excel: se conserva (no se borra)
+
+  // Guardar índice actual completo para preservar todo
+  const prevIdx = JSON.parse(JSON.stringify(osIdx));
+  const prevMap = {}; // oid -> {ev, fecha}
+  Object.entries(prevIdx).forEach(function(entry){
+    entry[1].forEach(function(ev){
+      if(ev.oid) prevMap[ev.oid] = {ev:ev, fecha:entry[0]};
+    });
   });
-  // Preservar tambien actividades
-  const preservedActs = JSON.parse(JSON.stringify(actEv));
-  osIdx={}; depColorMap={}; depColorIdx=0;
-  // Restaurar actividades que no vienen del Excel
-  Object.assign(actEv, preservedActs);
+
+  // NO limpiar osIdx - hacer merge
+  // Solo resetear colores para reconstruirlos
+  depColorMap={}; depColorIdx=0;
   let ok=0, skip=0;
   const gasRows=[];
   rows.forEach(row=>{
@@ -1118,8 +1146,32 @@ function processExcelRows(rows, nombre) {
       nt_m: prev.nt_m||'',
       mat: prev.mat||'',
     };
+    // Upsert: si la OS ya existe en esa fecha, actualizar; si no, agregar
     if(!osIdx[fecha]) osIdx[fecha]=[];
-    osIdx[fecha].push(ev);
+    const existingIdx = osIdx[fecha].findIndex(function(e){ return e.oid===ev.oid; });
+    if(existingIdx >= 0) {
+      // Actualizar datos del sistema conservando anotaciones manuales
+      const existing = osIdx[fecha][existingIdx];
+      ev.em_m = existing.em_m || ev.em_m;
+      ev.nt_m = existing.nt_m || ev.nt_m;
+      ev.mat  = existing.mat  || ev.mat;
+      osIdx[fecha][existingIdx] = ev;
+    } else {
+      // OS nueva o movida de fecha - verificar si estaba en otra fecha
+      var oldEntry = prevMap[ev.oid];
+      if(oldEntry && oldEntry.fecha !== fecha) {
+        // Estaba en otra fecha - remover de la fecha anterior
+        if(osIdx[oldEntry.fecha]) {
+          osIdx[oldEntry.fecha] = osIdx[oldEntry.fecha].filter(function(e){ return e.oid !== ev.oid; });
+          if(osIdx[oldEntry.fecha].length === 0) delete osIdx[oldEntry.fecha];
+        }
+        // Preservar anotaciones
+        ev.em_m = oldEntry.ev.em_m || ev.em_m;
+        ev.nt_m = oldEntry.ev.nt_m || ev.nt_m;
+        ev.mat  = oldEntry.ev.mat  || ev.mat;
+      }
+      osIdx[fecha].push(ev);
+    }
     if(ev.sta) depColor(ev.sta);
     gasRows.push({
       oid:ev.oid, aid:ev.aid, fecha, hora:ev.ti, st:ev.st,
