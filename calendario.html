@@ -935,32 +935,41 @@ function parseTime(s){const m=String(s||''). match(/(\d{1,2}:\d{2})(?::\d{2})?/)
 
 // ── INIT ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
+  // Inicializar siempre
+  buildColorPicker();
+  document.addEventListener('click', function(e) {
+    if(!e.target.closest('#dep-wrap')) closeMSAll('dep');
+    if(!e.target.closest('#cit-wrap')) closeMSAll('cit');
+  });
+
   // Cargar datos incrustados si existen
-  if(typeof __OS__ !== 'undefined' && Object.keys(__OS__).length > 0) {
-    Object.entries(__OS__).forEach(([fecha, evs]) => {
-      evs.forEach(ev => { ev.fecha = fecha; });
+  if(typeof __OS__ !== 'undefined' && __OS__ && Object.keys(__OS__).length > 0) {
+    var flat = [];
+    Object.entries(__OS__).forEach(function(entry) {
+      var fecha = entry[0], evs = entry[1];
+      evs.forEach(function(ev) { ev.fecha = fecha; });
+      if(!osIdx[fecha]) osIdx[fecha] = [];
+      osIdx[fecha] = osIdx[fecha].concat(evs);
+      flat = flat.concat(evs);
     });
-    Object.assign(osIdx, __OS__);
-    if(typeof __ACT__ !== 'undefined') Object.assign(actEv, __ACT__);
-    const flat = Object.values(osIdx).flat();
-    const firstDate = Object.keys(osIdx).sort()[0];
-    if(firstDate){const[y,m]=firstDate.split('-').map(Number);curY=y;curM=m-1;}
-    flat.forEach(ev => { if(ev.sta) depColor(ev.sta); });
-    allDeps=[...new Set(flat.map(e=>e.sta).filter(Boolean))].sort();
-    allCits=[...new Set(flat.map(e=>e.ci).filter(Boolean))].sort();
+    if(typeof __ACT__ !== 'undefined' && __ACT__) {
+      Object.entries(__ACT__).forEach(function(entry) {
+        actEv[entry[0]] = entry[1];
+      });
+    }
+    var firstDate = Object.keys(osIdx).sort()[0];
+    if(firstDate){var p=firstDate.split('-').map(Number);curY=p[0];curM=p[1]-1;}
+    flat.forEach(function(ev){ if(ev.sta) depColor(ev.sta); });
+    allDeps=[...new Set(flat.map(function(e){return e.sta;}).filter(Boolean))].sort();
+    allCits=[...new Set(flat.map(function(e){return e.ci;}).filter(Boolean))].sort();
     showCalScreen();
     buildFilters();
     applyFilters();
     setSyncUI('ok', flat.length + ' OS cargadas');
     startSync();
-    return; // No cargar desde GAS si hay datos incrustados
+    return;
   }
-  buildColorPicker();
-  document.addEventListener('click', e => {
-    if(!e.target.closest('#dep-wrap')) closeMSAll('dep');
-    if(!e.target.closest('#cit-wrap')) closeMSAll('cit');
-  });
-  // Intentar cargar datos del GAS al iniciar
+  // Sin datos incrustados: intentar GAS
   loadFromGAS();
 });
 
