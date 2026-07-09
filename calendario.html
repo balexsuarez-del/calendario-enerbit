@@ -935,41 +935,47 @@ function parseTime(s){const m=String(s||''). match(/(\d{1,2}:\d{2})(?::\d{2})?/)
 
 // ── INIT ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
-  // Inicializar siempre
   buildColorPicker();
   document.addEventListener('click', function(e) {
     if(!e.target.closest('#dep-wrap')) closeMSAll('dep');
     if(!e.target.closest('#cit-wrap')) closeMSAll('cit');
   });
+  // Siempre intentar cargar __OS__ incrustado primero
+  cargarDatosIniciales();
+});
 
-  // 1. Intentar cargar desde localStorage (datos guardados por el usuario)
-  var savedData = null;
-  try {
-    var saved = localStorage.getItem('cal_osIdx');
-    if(saved) {
-      savedData = JSON.parse(saved);
-      console.log('Datos desde localStorage');
-    }
-  } catch(e) { savedData = null; }
+function cargarDatosIniciales() {
+  // Definir mapas de expansion localmente
+  var AL = {eB:'enerBit',CE:'Circuitos Electricas',C3:'C3 Pronto Servicios',
+             MH:'MHEV Ingenieria',VG:'Valgaro',CG:'CGM Support',OC:'OCA Global',kT:'KantiA'};
+  var ST = {D:'done', C:'cancel', R:'reprog', P:'pending'};
 
-  // 2. Si hay datos en localStorage, usarlos (son los más actuales)
-  if(savedData && Object.keys(savedData).length > 0) {
-    loadOsData(savedData);
+  // Leer datos incrustados
+  var rawOS = (typeof __OS_RAW__ !== 'undefined') ? __OS_RAW__ : 
+              (typeof __OS__ !== 'undefined') ? __OS__ : null;
+
+  if(!rawOS || Object.keys(rawOS).length === 0) {
+    // Sin datos incrustados - mostrar pantalla de carga
     return;
   }
 
-  // 3. Si no hay localStorage, usar datos incrustados __OS__
-  if(typeof __OS__ !== 'undefined' && __OS__ && Object.keys(__OS__).length > 0) {
-    var AL={eB:'enerBit',CE:'Circuitos Eléctricas',C3:'C3 Pronto Servicios',MH:'MHEV Ingeniería',VG:'Valgaro',CG:'CGM Support',OC:'OCA Global',kT:'KantiA'};
-    var ST={D:'done',C:'cancel',R:'reprog',P:'pending'};
-    var expanded = {};
-    Object.entries(__OS__).forEach(function(entry) {
-      var fecha = entry[0], evs = entry[1];
-      expanded[fecha] = evs.map(function(ev) {
-        if(ev.oid) return ev; // formato completo, ya expandido
-        // formato compacto con claves cortas
-        return {
-          oid:ev.o||'', aid:ev.a||'',
+  // Expandir datos (soporta formato compacto y formato completo)
+  var savedNotes = {};
+  try {
+    var sn = localStorage.getItem('cal_notes');
+    if(sn) savedNotes = JSON.parse(sn);
+  } catch(e) {}
+
+  osIdx = {};
+  Object.entries(rawOS).forEach(function(entry) {
+    var fecha = entry[0], evs = entry[1];
+    osIdx[fecha] = evs.map(function(ev) {
+      var expanded;
+      if(ev.oid) {
+        expanded = ev; // formato completo
+      } else {
+        expanded = {
+          oid:ev.o||'', aid:ev.a||ev.o+'-a'||'',
           st:ST[ev.s]||'pending', em_m:'',
           ci:ev.c||'', sta:ev.d||'',
           tc:ev.t||'', tn:ev.t||'',
@@ -980,31 +986,32 @@ document.addEventListener('DOMContentLoaded', function() {
           cr:ev.x||'', co:'',
           ti:ev.f||'', nt_m:'', mat:''
         };
-      });
+      }
+      // Restaurar notas/estado/material guardados
+      var note = savedNotes[expanded.oid];
+      if(note) {
+        if(note.em_m) expanded.em_m = note.em_m;
+        if(note.nt_m) expanded.nt_m = note.nt_m;
+        if(note.mat)  expanded.mat  = note.mat;
+      }
+      return expanded;
     });
-    loadOsData(expanded);
-    return;
-  }
+  });
 
-  // 4. Sin datos locales ni incrustados: intentar GAS
-  loadFromGAS();
-});
-
-function loadOsData(data) {
-  osIdx = data;
-  if(typeof __ACT__ !== 'undefined' && __ACT__) {
-    Object.entries(__ACT__).forEach(function(e){ actEv[e[0]]=e[1]; });
-  }
-  // Restaurar actEv desde localStorage
+  // Restaurar actividades
   try {
-    var savedAct = localStorage.getItem('cal_actEv');
-    if(savedAct) Object.assign(actEv, JSON.parse(savedAct));
+    var sa = localStorage.getItem('cal_acts');
+    if(sa) Object.assign(actEv, JSON.parse(sa));
   } catch(e) {}
 
+  inicializarCalendario();
+}
+
+function inicializarCalendario() {
   var flat = Object.values(osIdx).flat();
   flat.forEach(function(ev){ if(ev.sta) depColor(ev.sta); });
-  allDeps=[...new Set(flat.map(function(e){return e.sta;}).filter(Boolean))].sort();
-  allCits=[...new Set(flat.map(function(e){return e.ci;}).filter(Boolean))].sort();
+  allDeps = [...new Set(flat.map(function(e){return e.sta;}).filter(Boolean))].sort();
+  allCits = [...new Set(flat.map(function(e){return e.ci;}).filter(Boolean))].sort();
   var firstDate = Object.keys(osIdx).sort()[0];
   if(firstDate){var p=firstDate.split('-').map(Number);curY=p[0];curM=p[1]-1;}
   showCalScreen();
@@ -1015,45 +1022,18 @@ function loadOsData(data) {
 }
 
 function saveToLocalStorage() {
-  try {
-    localStorage.setItem('cal_osIdx', JSON.stringify(osIdx));
-    localStorage.setItem('cal_actEv', JSON.stringify(actEv));
-  } catch(e) {
-    console.warn('localStorage lleno, limpiando...');
-    try { localStorage.clear(); } catch(e2){}
-  }
-}
-
-  // Cargar datos incrustados si existen
-  if(typeof __OS__ !== 'undefined' && __OS__ && Object.keys(__OS__).length > 0) {
-    var flat = [];
-    Object.entries(__OS__).forEach(function(entry) {
-      var fecha = entry[0], evs = entry[1];
-      evs.forEach(function(ev) { ev.fecha = fecha; });
-      if(!osIdx[fecha]) osIdx[fecha] = [];
-      osIdx[fecha] = osIdx[fecha].concat(evs);
-      flat = flat.concat(evs);
-    });
-    if(typeof __ACT__ !== 'undefined' && __ACT__) {
-      Object.entries(__ACT__).forEach(function(entry) {
-        actEv[entry[0]] = entry[1];
-      });
+  // Guardar solo notas/estado/material (liviano)
+  var notes = {};
+  Object.values(osIdx).flat().forEach(function(ev) {
+    if(ev.oid && (ev.em_m || ev.nt_m || ev.mat)) {
+      notes[ev.oid] = {em_m:ev.em_m||'', nt_m:ev.nt_m||'', mat:ev.mat||''};
     }
-    var firstDate = Object.keys(osIdx).sort()[0];
-    if(firstDate){var p=firstDate.split('-').map(Number);curY=p[0];curM=p[1]-1;}
-    flat.forEach(function(ev){ if(ev.sta) depColor(ev.sta); });
-    allDeps=[...new Set(flat.map(function(e){return e.sta;}).filter(Boolean))].sort();
-    allCits=[...new Set(flat.map(function(e){return e.ci;}).filter(Boolean))].sort();
-    showCalScreen();
-    buildFilters();
-    applyFilters();
-    setSyncUI('ok', flat.length + ' OS cargadas');
-    startSync();
-    return;
-  }
-  // Sin datos incrustados: intentar GAS
-  loadFromGAS();
-});
+  });
+  try {
+    localStorage.setItem('cal_notes', JSON.stringify(notes));
+    localStorage.setItem('cal_acts', JSON.stringify(actEv));
+  } catch(e) {}
+}
 
 async function loadFromGAS() {
   setSyncUI('busy', 'Cargando...');
