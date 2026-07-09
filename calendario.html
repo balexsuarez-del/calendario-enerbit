@@ -325,6 +325,26 @@ textarea.fi{resize:vertical;min-height:60px}
 .chip.kt-chip  { border-left:3px solid #2563EB!important; background:#DBEAFE!important; color:#1E3A8A!important; }
 .chip.usr-chip { border-left:3px solid #F59E0B!important; background:#FEF3C7!important; color:#92400E!important; }
 
+
+/* KantiA header en tarjeta */
+.kt-header { 
+  display:flex;align-items:center;gap:5px;
+  background:linear-gradient(135deg,#1E40AF,#2563EB);
+  padding:4px 10px;margin:-10px -13px 8px -18px;
+  border-radius:0;
+}
+.kt-header-txt { font-size:.62rem;font-weight:700;color:#fff;letter-spacing:.05em; }
+.eb-header {
+  display:flex;align-items:center;gap:5px;
+  background:linear-gradient(135deg,#501C7C,#7028AE);
+  padding:4px 10px;margin:-10px -13px 8px -18px;
+  border-radius:0;
+}
+.eb-header-txt { font-size:.62rem;font-weight:700;color:rgba(255,255,255,.85);letter-spacing:.05em; }
+
+
+@keyframes cardPulse { 0%,100%{box-shadow:0 0 8px rgba(245,158,11,.3)} 50%{box-shadow:0 0 20px rgba(245,158,11,.6)} }
+
 </style>
 </head>
 <body>
@@ -791,19 +811,23 @@ function markChanged(oid, aid, campo) {
   var key = oid + '|' + aid;
   changedOS[key] = { campo: campo, ts: Date.now(), readBy: [] };
   saveChanged();
+  // Sincronizar con GAS para que otros usuarios vean el cambio
+  gasPost({action:'addHistorial', oid:oid, campo:campo, accion:'cambio', ts:new Date().toISOString()}).catch(function(){});
 }
 function markRead(oid, aid, quien) {
   var key = oid + '|' + aid;
-  if(!changedOS[key]) return;
+  if(!changedOS[key]) changedOS[key] = { campo:'', ts:Date.now(), readBy:[] };
   if(!changedOS[key].readBy) changedOS[key].readBy = [];
   if(!changedOS[key].readBy.includes(quien)) changedOS[key].readBy.push(quien);
   if(['eB','kT','Aliado'].every(function(r){ return changedOS[key].readBy.includes(r); })) {
     delete changedOS[key];
   }
   saveChanged();
+  // Guardar lectura en GAS para sincronizar con otros usuarios
+  gasPost({action:'updateNota', oid:oid, aid:aid, valor:'__leido:'+quien+':'+Date.now()}).catch(function(){});
   if(selDate) renderOSList(selDate);
   applyFilters();
-  toast(quien + ' marco como leida', 'ok');
+  toast(quien + ' marcó como leída ✓', 'ok');
 }
 function isChanged(oid, aid) { return !!(changedOS[oid + '|' + aid]); }
 function getReadBy(oid, aid) { return (changedOS[oid + '|' + aid] || {}).readBy || []; }
@@ -1410,17 +1434,16 @@ function renderCalendar() {
     const pb=pEvs.length?`<div class="d-pend">⏳${pEvs.length}</div>`:'';
     const shown=[...os.slice(0,2),...acts.slice(0,1)];
     const chips=shown.map(function(ev){
-      if(ev.color){var co=ACT_COLORS.find(function(c){return c.bg===ev.color;})||ACT_COLORS[0];return '<div class="chip" style="background:'+co.bg+';color:'+co.bar+'">&#9999; '+ev.titulo+'</div>';}
+      if(ev.color){var co=ACT_COLORS.find(function(c){return c.bg===ev.color;})||ACT_COLORS[0];return '<div class="chip" style="background:'+co.bg+';color:'+co.bar+'">✏ '+ev.titulo+'</div>';}
       var emp=getEmpresa(ev); var ei=empresaInfo(emp);
       var chg=isChanged(ev.oid,ev.aid);
-      var chipBg=chg?'#FEF3C7':ei.bg;
-      var chipCl=chg?'#92400E':ei.cl;
-      var chipBar=chg?'#F59E0B':ei.bar;
-      var co=depColor(ev.sta);
+      var bg=chg?'#FEF3C7':ei.bg;
+      var cl=chg?'#92400E':ei.cl;
+      var bar=chg?'#F59E0B':ei.bar;
       var sc=ST[calcStatus(ev)]||ST.pending;
-      var prefix=chg?'&#x1F514; ':emp==='kt'?'K ':emp==='usr'?'&#9998; ':sc.icon+' ';
-      return '<div class="chip '+ei.chipCls+'" style="background:'+chipBg+';color:'+chipCl+';border-left:3px solid '+chipBar+'">'+prefix+ev.tc+' '+ev.ci+'</div>';
-    }).join('');;;
+      var prefix=chg?'🔔 ':emp==='kt'?'K ':emp==='usr'?'✏ ':sc.icon+' ';
+      return '<div class="chip" style="background:'+bg+';color:'+cl+';border-left:3px solid '+bar+'">'+prefix+ev.tc+' '+ev.ci+'</div>';
+    }).join('');;;;
     const tot=os.length+acts.length;
     const more=tot>3?`<div class="chip-more">+${tot-3} más</div>`:'';
     const holHtml=hol?`<div class="d-hol">🎉 ${hol}</div>`:'';
@@ -1546,25 +1569,28 @@ function osCardHTML(ev, key) {
   var chg=isChanged(ev.oid, ev.aid);
   var readBy=getReadBy(ev.oid, ev.aid);
 
-  // Clase de la tarjeta
-  var cardCls='os-card '+ei.cardCls+(chg?' changed':'');
-
+  // Clase de tarjeta
+  var cardBorder=chg?'border:2px solid #F59E0B!important;background:#FFFBEB!important;box-shadow:0 0 12px rgba(245,158,11,.3)!important':
+                 emp==='kt'?'border-left:5px solid #2563EB!important;background:#EFF6FF!important':
+                 'border-left:5px solid #7028AE!important';
+  
   var mot='';
   if((isR||isC)&&(ev.cr||ev.co)){
     mot='<div class="motivo '+(isR?'rpg':'cnl')+'"><strong>'+(ev.cr||'')+'</strong>'+(ev.co&&ev.co!==ev.cr?'<br><small>'+ev.co.substring(0,200)+'</small>':'')+'</div>';
   }
 
-  // Badge empresa
-  var empBadge='<span class="tag '+ei.badge+'">'+ei.label+'</span>';
+  // Header empresa
+  var empHeader='';
+  if(emp==='kt'){
+    empHeader='<div class="kt-header"><svg width="12" height="12" viewBox="0 0 22 22"><rect width="22" height="22" rx="3" fill="white"/><path d="M4 3L4 19M4 11L16 3M4 11L16 19" stroke="#2563EB" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="kt-header-txt">kantiA</span></div>';
+  } else if(emp==='eb'){
+    empHeader='<div class="eb-header"><svg height="10" viewBox="0 0 110 28"><text x="0" y="22" font-family="Arial Black,sans-serif" font-size="22" font-weight="900" fill="#FF7900">ener</text><text x="52" y="22" font-family="Arial Black,sans-serif" font-size="22" font-weight="900" fill="white">Bit</text></svg></div>';
+  } else if(emp==='usr'){
+    empHeader='<div style="background:#F59E0B;padding:3px 10px;margin:-10px -13px 8px -18px;"><span style="font-size:.6rem;font-weight:700;color:#fff">✏ OS Manual</span></div>';
+  }
 
-  // Logo KantiA
-  var ktSvg=emp==='kt'?'<svg width="14" height="14" viewBox="0 0 22 22" style="flex-shrink:0;margin-right:2px"><rect width="22" height="22" rx="4" fill="#2563EB"/><path d="M4 3L4 19M4 11L16 3M4 11L16 19" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>':'';
-
-  // Logo enerBit
-  var ebSvg=emp==='eb'?'<svg width="28" height="12" viewBox="0 0 110 28" style="flex-shrink:0;margin-right:2px"><text x="0" y="22" font-family="Arial Black,sans-serif" font-size="22" font-weight="900" fill="#FF7900">ener</text><text x="52" y="22" font-family="Arial Black,sans-serif" font-size="22" font-weight="900" fill="#501C7C">Bit</text></svg>':'';
-
-  // Badge cambio
-  var changeBadge=chg?'<span class="changed-badge">&#x1F514; '+(changedOS[ev.oid+'|'+ev.aid]||{}).campo+'</span>':'';
+  // Badge cambio animado
+  var changeBadge=chg?'<span class="changed-badge">🔔 '+(changedOS[ev.oid+'|'+ev.aid]||{}).campo+' cambiado</span>':'';
 
   var estOpts=[''].concat(Object.keys(ST)).map(function(v){
     var s=v?ST[v]:null;
@@ -1573,48 +1599,53 @@ function osCardHTML(ev, key) {
   var matOpts=Object.entries(MAT).map(function(e){
     return '<option value="'+e[0]+'"'+((ev.mat||'')===e[0]?' selected':'')+'>'+e[1].label+'</option>';
   }).join('');
-  var depTag='<span class="tag" style="background:'+co.bg+';color:'+co.text+';border:1px solid '+co.bar+'40">&#9632; '+ev.sta+'</span>';
+  var depTag='<span class="tag" style="background:'+co.bg+';color:'+co.text+';border:1px solid '+co.bar+'40">◼ '+ev.sta+'</span>';
 
-  // Botones leído
-  var readBtns=chg?('<div class="read-btn-wrap"><span style="font-size:.63rem;color:#92400E;font-weight:600">&#x1F514; Leido por:</span>'+
+  // Botones leído - solo aparecen si hay cambio
+  var readBtns=chg?('<div class="read-btn-wrap">'+
+    '<span style="font-size:.62rem;color:#92400E;font-weight:700">🔔 Marcar leído:</span>'+
     ['eB','kT','Aliado'].map(function(r){
       var done=readBy.includes(r);
       var cls='read-btn '+(r==='eB'?'read-eb':r==='kT'?'read-kt':'read-al')+(done?' read-done':'');
-      return '<button class="'+cls+'" onclick="markRead(''+ev.oid+'',''+ev.aid+'',''+r+'')">'+(done?'&#10003; ':'')+r+'</button>';
-    }).join('')+'</div>'):'';
+      return '<button class="'+cls+'" onclick="markRead(\''+ev.oid+'\',\''+ev.aid+'\',\''+r+'\')">'+(done?'✓ ':'')+r+'</button>';
+    }).join('')+
+  '</div>'):'';
 
-  return '<div class="'+cardCls+'" draggable="true" ondragstart="dDragStart(event,''+ev.oid+'',''+ev.aid+'',''+key+'')">'+
-    '<div class="os-stripe"></div>'+
-    '<div class="os-body">'+
-      '<div class="os-head">'+ktSvg+ebSvg+
+  return '<div class="os-card" style="'+cardBorder+';border-radius:8px;overflow:hidden;display:flex;margin-bottom:8px;'+(chg?'animation:cardPulse 2s infinite':'')+'">'+
+    '<div style="width:5px;flex-shrink:0;background:'+(chg?'#F59E0B':emp==='kt'?'#2563EB':'#7028AE')+(chg?';animation:stripeFlash 1.2s infinite':'')+'"></div>'+
+    '<div class="os-body" style="flex:1;min-width:0;padding:10px 13px">'+
+      empHeader+
+      '<div class="os-head">'+
         '<span class="os-type">'+sc.icon+' '+(ev.tc||'')+'</span>'+
-        (ev.ti?'<span class="os-time">&#9200;'+ev.ti+'</span>':'')+
-        '<span class="os-id">#'+(ev.oid||'').slice(-8)+'</span>'+changeBadge+
+        (ev.ti?'<span class="os-time">⏰'+ev.ti+'</span>':'')+
+        '<span class="os-id">#'+(ev.oid||'').slice(-8)+'</span>'+
+        changeBadge+
       '</div>'+
-      '<div class="os-loc">&#128205; '+(ev.ci||'')+(ev.sta?', '+ev.sta:'')+(ev.dir?' - '+ev.dir:'')+
-        '<br>&#128119; '+(ev.op||'')+(ev.cert?'<br>&#128196; Acta: '+ev.cert:'')+'</div>'+
+      '<div class="os-loc">📍 '+(ev.ci||'')+(ev.sta?', '+ev.sta:'')+(ev.dir?' — '+ev.dir:'')+
+        '<br>👷 '+(ev.op||'')+(ev.cert?'<br>📄 Acta: '+ev.cert:'')+'</div>'+
       (ev.des?'<div class="os-obs">'+ev.des+'</div>':'')+
       (ev.obs?'<div class="os-obs">'+ev.obs+'</div>':'')+mot+
       '<div class="os-tags">'+
         '<span class="tag '+sc.tag+'">'+sc.icon+' '+sc.label+'</span>'+
-        depTag+empBadge+
+        depTag+
+        '<span class="tag '+ei.badge+'">'+ei.label+'</span>'+
         (ev.mat?'<span class="tag" style="background:'+mat.bg+';color:'+mat.cl+'">'+mat.label+'</span>':'')+
       '</div>'+
-      (ev.nt_m?'<div class="os-nota">&#128204; '+ev.nt_m+'</div>':'')+
+      (ev.nt_m?'<div class="os-nota">📌 '+ev.nt_m+'</div>':'')+
       readBtns+
       '<div class="edit-section">'+
         '<div class="edit-row"><label>Estado</label>'+
           '<select class="edit-select" id="est-'+ev.oid+'-'+ev.aid+'">'+estOpts+'</select>'+
-          '<button class="save-btn" onclick="saveEstado(''+ev.oid+'',''+ev.aid+'')">&#128190;</button></div>'+
+          '<button class="save-btn" onclick="saveEstado(\''+ev.oid+'\',\''+ev.aid+'\')">💾</button></div>'+
         '<div class="edit-row"><label>Material</label>'+
           '<select class="edit-select" id="mat-'+ev.oid+'-'+ev.aid+'">'+matOpts+'</select>'+
-          '<button class="save-btn" onclick="saveMaterial(''+ev.oid+'',''+ev.aid+'')">&#128190;</button></div>'+
+          '<button class="save-btn" onclick="saveMaterial(\''+ev.oid+'\',\''+ev.aid+'\')">💾</button></div>'+
         '<div class="nota-wrap">'+
           '<textarea id="nota-'+ev.oid+'-'+ev.aid+'" placeholder="Escribe una nota...">'+(ev.nt_m||'')+'</textarea>'+
           '<div class="nota-actions">'+
-            '<button class="btn btn-secondary btn-sm" onclick="saveNota(''+ev.oid+'',''+ev.aid+'')">&#128190; Guardar nota</button>'+
-            '<button class="btn btn-secondary btn-sm" onclick="openMvModal(''+ev.oid+'',''+ev.aid+'',''+key+'')">&#128197; Nueva fecha</button>'+
-            '<button class="btn btn-danger btn-sm" onclick="deleteOS(''+ev.oid+'',''+ev.aid+'')">&#128465; Eliminar</button>'+
+            '<button class="btn btn-secondary btn-sm" onclick="saveNota(\''+ev.oid+'\',\''+ev.aid+'\')">💾 Guardar nota</button>'+
+            '<button class="btn btn-secondary btn-sm" onclick="openMvModal(\''+ev.oid+'\',\''+ev.aid+'\',\''+key+'\')">📅 Nueva fecha</button>'+
+            '<button class="btn btn-danger btn-sm" onclick="deleteOS(\''+ev.oid+'\',\''+ev.aid+'\')">🗑 Eliminar</button>'+
           '</div></div>'+
       '</div>'+
     '</div>'+
