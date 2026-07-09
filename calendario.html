@@ -942,6 +942,75 @@ document.addEventListener('DOMContentLoaded', function() {
     if(!e.target.closest('#cit-wrap')) closeMSAll('cit');
   });
 
+  // 1. Intentar cargar desde localStorage (datos guardados por el usuario)
+  var savedData = null;
+  try {
+    var saved = localStorage.getItem('cal_osIdx');
+    if(saved) {
+      savedData = JSON.parse(saved);
+      console.log('Datos desde localStorage');
+    }
+  } catch(e) { savedData = null; }
+
+  // 2. Si hay datos en localStorage, usarlos (son los más actuales)
+  if(savedData && Object.keys(savedData).length > 0) {
+    loadOsData(savedData);
+    return;
+  }
+
+  // 3. Si no hay localStorage, usar datos incrustados __OS__
+  if(typeof __OS__ !== 'undefined' && __OS__ && Object.keys(__OS__).length > 0) {
+    // Expandir formato compacto
+    var expanded = {};
+    Object.entries(__OS__).forEach(function(entry) {
+      var fecha = entry[0], evs = entry[1];
+      expanded[fecha] = evs.map(function(ev) {
+        if(ev.oid) return ev; // ya expandido
+        return {oid:ev.o,aid:ev.a,st:(__ST__||{})[ev.s]||ev.s||'pending',em_m:'',ci:ev.c,sta:ev.d,tc:ev.t,tn:ev.t,op:ev.p,em:'',al:(__AL__||{})[ev.l]||ev.l||'enerBit',tec:ev.p,dir:ev.r,cert:'',des:'',obs:'',cr:ev.x||'',co:'',ti:ev.f,nt_m:'',mat:''};
+      });
+    });
+    loadOsData(expanded);
+    return;
+  }
+
+  // 4. Sin datos locales ni incrustados: intentar GAS
+  loadFromGAS();
+});
+
+function loadOsData(data) {
+  osIdx = data;
+  if(typeof __ACT__ !== 'undefined' && __ACT__) {
+    Object.entries(__ACT__).forEach(function(e){ actEv[e[0]]=e[1]; });
+  }
+  // Restaurar actEv desde localStorage
+  try {
+    var savedAct = localStorage.getItem('cal_actEv');
+    if(savedAct) Object.assign(actEv, JSON.parse(savedAct));
+  } catch(e) {}
+
+  var flat = Object.values(osIdx).flat();
+  flat.forEach(function(ev){ if(ev.sta) depColor(ev.sta); });
+  allDeps=[...new Set(flat.map(function(e){return e.sta;}).filter(Boolean))].sort();
+  allCits=[...new Set(flat.map(function(e){return e.ci;}).filter(Boolean))].sort();
+  var firstDate = Object.keys(osIdx).sort()[0];
+  if(firstDate){var p=firstDate.split('-').map(Number);curY=p[0];curM=p[1]-1;}
+  showCalScreen();
+  buildFilters();
+  applyFilters();
+  setSyncUI('ok', flat.length + ' OS cargadas');
+  startSync();
+}
+
+function saveToLocalStorage() {
+  try {
+    localStorage.setItem('cal_osIdx', JSON.stringify(osIdx));
+    localStorage.setItem('cal_actEv', JSON.stringify(actEv));
+  } catch(e) {
+    console.warn('localStorage lleno, limpiando...');
+    try { localStorage.clear(); } catch(e2){}
+  }
+}
+
   // Cargar datos incrustados si existen
   if(typeof __OS__ !== 'undefined' && __OS__ && Object.keys(__OS__).length > 0) {
     var flat = [];
@@ -1195,6 +1264,9 @@ function processExcelRows(rows, nombre) {
   setSyncUI('ok', ok+' OS · '+nombre);
   toast(`✓ ${ok} órdenes cargadas`,'ok');
 
+  // Guardar en localStorage para persistir entre recargas
+  saveToLocalStorage();
+
   // Guardar en GAS en background
   if(gasRows.length) {
     gasPost({action:'saveOS',data:gasRows}).then(d=>{
@@ -1218,6 +1290,8 @@ function resetApp() {
   selDate=null; allDeps=[]; allCits=[]; selectedDeps.clear(); selectedCits.clear();
   depColorMap={}; depColorIdx=0;
   if(syncTimer){clearInterval(syncTimer);syncTimer=null;}
+  // Limpiar localStorage
+  try { localStorage.removeItem('cal_osIdx'); localStorage.removeItem('cal_actEv'); } catch(e){}
   document.getElementById('upload-screen').style.display='';
   document.getElementById('cal-screen').style.display='none';
   ['btn-crear','btn-export','btn-reset'].forEach(id=>document.getElementById(id).classList.add('btn-hidden'));
@@ -1732,6 +1806,8 @@ function osCardHTML(ev, key) {
 function patchOS(oid, aid, fields) {
   Object.values(osIdx).flat().forEach(ev=>{if(ev.oid===oid&&ev.aid===aid)Object.assign(ev,fields);});
   applyFilters();
+  // Persistir cambio en localStorage
+  try { saveToLocalStorage(); } catch(e){}
 }
 
 async function saveEstado(oid,aid){
