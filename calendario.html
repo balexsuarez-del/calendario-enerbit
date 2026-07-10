@@ -1552,19 +1552,15 @@ function buildMSList(key, items) {
     const div = document.createElement('div');
     div.className = 'ms-item';
     div.dataset.val = item;
-    const checked = msData[key].sel.size === 0 || msData[key].sel.has(item);
+    const checked = msData[key].sel.has(item);
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = checked;
     (function(it){
       cb.addEventListener('change', function(){
-        // Si es la primera interaccion (sel vacio = todos), llenar con todos primero
-        if(msData[key].sel.size === 0) {
-          msData[key].all.forEach(function(a){ msData[key].sel.add(a); });
-        }
         if(this.checked) msData[key].sel.add(it);
         else msData[key].sel.delete(it);
-        // Si quedan todos seleccionados, limpiar (= todos)
+        // Si quedan todos marcados, equivale a "todos" (sin filtro)
         if(msData[key].sel.size === msData[key].all.length) msData[key].sel.clear();
         updateMSBtn(key);
         applyFilters();
@@ -1596,10 +1592,14 @@ function searchMS(key, q) {
 
 function clearMS(key) {
   msData[key].sel.clear();
+  document.querySelectorAll(`#${key}-list input`).forEach(cb=>cb.checked=false);
+  updateMSBtn(key); applyFilters();
+}
+function allMS(key){
+  msData[key].sel.clear();
   document.querySelectorAll(`#${key}-list input`).forEach(cb=>cb.checked=true);
   updateMSBtn(key); applyFilters();
 }
-function allMS(key){clearMS(key);}
 
 function updateMSBtn(key) {
   const sel=msData[key].sel, all=msData[key].all;
