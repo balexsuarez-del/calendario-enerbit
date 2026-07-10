@@ -1159,113 +1159,157 @@ function loadFile(file) {
 }
 
 function processExcelRows(rows, nombre) {
-  // ACTUALIZACIÓN INCREMENTAL:
-  // - OS existente: actualiza datos del sistema, conserva nota/estado/material
-  // - OS nueva: se agrega
-  // - OS que ya no está en el Excel: se conserva (no se borra)
+  if(!rows || !rows.length) { toast('El archivo no tiene datos', 'err'); return; }
 
-  // Guardar índice actual completo para preservar todo
-  const prevIdx = JSON.parse(JSON.stringify(osIdx));
-  const prevMap = {}; // oid -> {ev, fecha}
-  Object.entries(prevIdx).forEach(function(entry){
+  // ── DETECCION AUTOMATICA DE COLUMNAS ──────────────────────
+  var cols = Object.keys(rows[0]);
+  
+  function findCol(keys) {
+    for(var i=0; i<keys.length; i++) {
+      var found = cols.find(function(c){ 
+        return c.toLowerCase().trim() === keys[i].toLowerCase(); 
+      });
+      if(found) return found;
+    }
+    // Busqueda parcial
+    for(var i=0; i<keys.length; i++) {
+      var found = cols.find(function(c){ 
+        return c.toLowerCase().includes(keys[i].toLowerCase()); 
+      });
+      if(found) return found;
+    }
+    return null;
+  }
+
+  var COL = {
+    fecha:  findCol(['PLANNED_DATE_BEGIN','FECHA Y HORA PROGRAMADA','FECHA PROGRAMADA','fecha_inicio','FECHA','fecha','date','planned_date']),
+    oid:    findCol(['ORDER_ID','ID ORDEN','ID_ORDEN','order_id','id_orden','ID','ORDEN']),
+    aid:    findCol(['ASSIGNEE_ID','assignee_id','ASIGNADO_ID']),
+    status: findCol(['STATUS','ESTADO DE LA ORDEN','ESTADO','estado','status']),
+    city:   findCol(['CITY','CIUDAD','ciudad','city']),
+    state:  findCol(['STATE','DEPARTAMENTO','departamento','state','DPTO']),
+    type:   findCol(['ORDER_TYPE_CODE','ACTIVIDAD PRINCIPAL PROGRAMADA','TIPO DE ORDEN','ORDER_TYPE_NAME','tipo','type','ACTIVIDAD']),
+    op:     findCol(['OPERATOR_FULLNAME','NOMBRE DEL OPERADOR EN CAMPO','OPERADOR','TECNICO','operator','tecnico','NOMBRE_OPERADOR']),
+    email:  findCol(['OPERATOR_EMAIL','CORREO DEL OPERADOR EN CAMPO','EMAIL','CORREO','email','correo']),
+    dir:    findCol(['DIRECCION','DIRECCIÓN','direccion','address','DIR']),
+    cert:   findCol(['CERTIFICATE_ID','ACTA','certificate_id','CERT']),
+    des:    findCol(['DESCRIPTION','OBSERVACIÓN GENERAL','DESCRIPCION','description','obs_general','OBSERVACION']),
+    obs:    findCol(['OBSERVATIONS_CERTIFICATES','IRREGULARIDADES','observations','IRREGULARIDAD']),
+    cr:     findCol(['CANCEL_REASSON','MOTIVO DE CANCELACIÓN','CANCEL_REASON','motivo_cancel','MOTIVO']),
+    co:     findCol(['CANCEL_OBSERVATIONS','OBSERVACIÓN DE CANCELACIÓN','cancel_obs','obs_cancel']),
+    tec:    findCol(['TECNICOS_ASIGNADOS','TECNICO ASIGNADO','tecnicos','TECNICO','tec']),
+  };
+
+  // Mostrar columnas detectadas en consola
+  console.log('Columnas detectadas:', JSON.stringify(COL));
+  
+  // Verificar columna de fecha (obligatoria)
+  if(!COL.fecha) {
+    toast('No se encontro columna de fecha. Columnas disponibles: ' + cols.slice(0,5).join(', '), 'err');
+    return;
+  }
+  if(!COL.oid) {
+    toast('No se encontro columna de ID de orden', 'err');
+    return;
+  }
+
+  function getVal(row, col, max) {
+    var v = col ? (row[col] || '') : '';
+    v = String(v).trim();
+    if(v === 'nan' || v === 'null' || v === 'undefined') v = '';
+    return max ? v.substring(0, max) : v;
+  }
+
+  // Preservar notas/estado/material actuales
+  var savedNotes = {};
+  try { var sn=localStorage.getItem('cal_notes'); if(sn) savedNotes=JSON.parse(sn); } catch(e){}
+  Object.values(osIdx).flat().forEach(function(ev){
+    if(ev.oid && (ev.em_m||ev.nt_m||ev.mat)) {
+      savedNotes[ev.oid]={em_m:ev.em_m||'',nt_m:ev.nt_m||'',mat:ev.mat||''};
+    }
+  });
+
+  // Guardar OS previas para merge
+  var prevMap = {};
+  Object.entries(osIdx).forEach(function(entry){
     entry[1].forEach(function(ev){
-      if(ev.oid) prevMap[ev.oid] = {ev:ev, fecha:entry[0]};
+      if(ev.oid) prevMap[ev.oid]={ev:ev,fecha:entry[0]};
     });
   });
 
-  // NO limpiar osIdx - hacer merge
-  // Solo resetear colores para reconstruirlos
   depColorMap={}; depColorIdx=0;
-  let ok=0, skip=0;
-  const gasRows=[];
-  rows.forEach(row=>{
-    const rawF=row['PLANNED_DATE_BEGIN']||row['planned_date_begin']||row['FECHA Y HORA PROGRAMADA']||row['Fecha']||row['fecha']||'';
-    const fecha=parseFecha(rawF);
-    if(!fecha){skip++;return;}
-    const em=row['OPERATOR_EMAIL']||row['operator_email']||row['CORREO DEL OPERADOR EN CAMPO']||'';
-    const oid=row['ORDER_ID']||row['order_id']||row['ID ORDEN']||'';
-    const aid=row['ASSIGNEE_ID']||row['assignee_id']||oid+'-a'||'';
-    const key=oid+'|'+aid;
-    const prev=preserved[oid]||{};
-    const ev={
-      oid, aid, fecha,
-      st: row['STATUS']||row['status']||mapEstado(row['ESTADO DE LA ORDEN']||'')||'',
-      em_m: prev.em_m||'',
-      ci: row['CITY']||row['city']||row['CIUDAD']||'',
-      sta: row['STATE']||row['state']||row['DEPARTAMENTO']||'',
-      tc: (row['ORDER_TYPE_CODE']||row['order_type_code']||row['ACTIVIDAD PRINCIPAL PROGRAMADA']||'').substring(0,30),
-      tn: row['ORDER_TYPE_NAME']||row['order_type_name']||'',
-      op: (row['OPERATOR_FULLNAME']||row['operator_fullname']||row['NOMBRE DEL OPERADOR EN CAMPO']||'').substring(0,40),
-      em, al: getAliado(em),
-      tec: (row['TECNICOS_ASIGNADOS']||row['tecnicos_asignados']||row['OPERATOR_FULLNAME']||'').substring(0,80),
-      dir: (row['DIRECCION']||row['direccion']||row['DIRECCIÓN']||'').substring(0,80),
-      cert: row['CERTIFICATE_ID']||row['certificate_id']||'',
-      des: (row['DESCRIPTION']||row['description']||row['OBSERVACIÓN GENERAL']||'').substring(0,200),
-      obs: (row['OBSERVATIONS_CERTIFICATES']||row['observations_certificates']||'').substring(0,200),
-      cr: (row['CANCEL_REASSON']||row['cancel_reasson']||row['CANCEL_REASON']||row['MOTIVO DE CANCELACIÓN']||'').substring(0,80),
-      co: (row['CANCEL_OBSERVATIONS']||row['cancel_observations']||row['OBSERVACIÓN DE CANCELACIÓN']||'').substring(0,140),
-      ti: parseTime(rawF),
-      nt_m: prev.nt_m||'',
-      mat: prev.mat||'',
+  var ok=0, skip=0;
+
+  rows.forEach(function(row){
+    var rawF = getVal(row, COL.fecha);
+    var fecha = parseFecha(rawF);
+    if(!fecha){ skip++; return; }
+
+    var oid = getVal(row, COL.oid);
+    if(!oid){ skip++; return; }
+    var aid = getVal(row, COL.aid) || oid+'-a';
+    var em  = getVal(row, COL.email);
+    var stRaw = getVal(row, COL.status);
+    var st  = mapEstado(stRaw) || (stRaw.toLowerCase()==='done'?'done':'pending');
+    var prev= savedNotes[oid]||{};
+
+    var ev = {
+      oid: oid, aid: aid, fecha: fecha,
+      st:  st, em_m: prev.em_m||'',
+      ci:  getVal(row, COL.city, 30),
+      sta: getVal(row, COL.state, 25),
+      tc:  getVal(row, COL.type, 30),
+      tn:  getVal(row, COL.type, 60),
+      op:  getVal(row, COL.op, 40),
+      em:  em, al: getAliado(em),
+      tec: getVal(row, COL.tec, 80) || getVal(row, COL.op, 80),
+      dir: getVal(row, COL.dir, 80),
+      cert:getVal(row, COL.cert, 40),
+      des: getVal(row, COL.des, 200),
+      obs: getVal(row, COL.obs, 200),
+      cr:  getVal(row, COL.cr, 80),
+      co:  getVal(row, COL.co, 140),
+      ti:  parseTime(rawF),
+      nt_m:prev.nt_m||'', mat:prev.mat||''
     };
-    // Upsert: si la OS ya existe en esa fecha, actualizar; si no, agregar
+
+    // Merge incremental
     if(!osIdx[fecha]) osIdx[fecha]=[];
-    const existingIdx = osIdx[fecha].findIndex(function(e){ return e.oid===ev.oid; });
-    if(existingIdx >= 0) {
-      // Actualizar datos del sistema conservando anotaciones manuales
-      const existing = osIdx[fecha][existingIdx];
-      ev.em_m = existing.em_m || ev.em_m;
-      ev.nt_m = existing.nt_m || ev.nt_m;
-      ev.mat  = existing.mat  || ev.mat;
-      osIdx[fecha][existingIdx] = ev;
+    var existIdx=osIdx[fecha].findIndex(function(e){return e.oid===oid;});
+    if(existIdx>=0){
+      // Actualizar conservando anotaciones
+      var ex=osIdx[fecha][existIdx];
+      ev.em_m=ex.em_m||ev.em_m;
+      ev.nt_m=ex.nt_m||ev.nt_m;
+      ev.mat=ex.mat||ev.mat;
+      osIdx[fecha][existIdx]=ev;
     } else {
-      // OS nueva o movida de fecha - verificar si estaba en otra fecha
-      var oldEntry = prevMap[ev.oid];
-      if(oldEntry && oldEntry.fecha !== fecha) {
-        // Estaba en otra fecha - remover de la fecha anterior
-        if(osIdx[oldEntry.fecha]) {
-          osIdx[oldEntry.fecha] = osIdx[oldEntry.fecha].filter(function(e){ return e.oid !== ev.oid; });
-          if(osIdx[oldEntry.fecha].length === 0) delete osIdx[oldEntry.fecha];
-        }
-        // Preservar anotaciones
-        ev.em_m = oldEntry.ev.em_m || ev.em_m;
-        ev.nt_m = oldEntry.ev.nt_m || ev.nt_m;
-        ev.mat  = oldEntry.ev.mat  || ev.mat;
+      // OS en otra fecha? mover
+      var old=prevMap[oid];
+      if(old && old.fecha!==fecha && osIdx[old.fecha]) {
+        osIdx[old.fecha]=osIdx[old.fecha].filter(function(e){return e.oid!==oid;});
+        if(!osIdx[old.fecha].length) delete osIdx[old.fecha];
+        ev.em_m=old.ev.em_m||ev.em_m;
+        ev.nt_m=old.ev.nt_m||ev.nt_m;
+        ev.mat=old.ev.mat||ev.mat;
       }
       osIdx[fecha].push(ev);
     }
     if(ev.sta) depColor(ev.sta);
-    gasRows.push({
-      oid:ev.oid, aid:ev.aid, fecha, hora:ev.ti, st:ev.st,
-      ci:ev.ci, sta:ev.sta, tc:ev.tc, tn:ev.tn, op:ev.op,
-      em:ev.em, al:ev.al, tec:ev.tec, dir:ev.dir, cert:ev.cert,
-      des:ev.des, obs:ev.obs, cr:ev.cr, co:ev.co,
-      em_m:ev.em_m, nt_m:ev.nt_m, mat:ev.mat
-    });
     ok++;
   });
 
-  const firstDate=Object.keys(osIdx).sort()[0];
-  if(firstDate){const[y,m]=firstDate.split('-').map(Number);curY=y;curM=m-1;}
-  allDeps=[...new Set(Object.values(osIdx).flat().map(e=>e.sta).filter(Boolean))].sort();
-  allCits=[...new Set(Object.values(osIdx).flat().map(e=>e.ci).filter(Boolean))].sort();
+  allDeps=[...new Set(Object.values(osIdx).flat().map(function(e){return e.sta;}).filter(Boolean))].sort();
+  allCits=[...new Set(Object.values(osIdx).flat().map(function(e){return e.ci;}).filter(Boolean))].sort();
+  var firstDate=Object.keys(osIdx).sort()[0];
+  if(firstDate){var p=firstDate.split('-').map(Number);curY=p[0];curM=p[1]-1;}
 
   showCalScreen();
   buildFilters();
   applyFilters();
-  setProg(null);
-  setSyncUI('ok', ok+' OS · '+nombre);
-  toast(`✓ ${ok} órdenes cargadas`,'ok');
-
-  // Guardar en localStorage para persistir entre recargas
   saveToLocalStorage();
-
-  // Guardar en GAS en background
-  if(gasRows.length) {
-    gasPost({action:'saveOS',data:gasRows}).then(d=>{
-      if(d&&d.ok) toast('Datos guardados en Google Sheets','ok');
-    }).catch(()=>{});
-  }
+  setSyncUI('ok', ok+' OS · '+nombre);
+  toast(ok+' ordenes cargadas'+(skip?' ('+skip+' sin fecha)':''), 'ok');
   startSync();
 }
 
