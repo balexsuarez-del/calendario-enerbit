@@ -1125,8 +1125,8 @@ function cargarDatosIniciales() {
           ti:ev.f||'', nt_m:'', mat:''
         };
       }
-      // Restaurar notas/estado/material guardados
-      var note = savedNotes[expanded.oid];
+      // Restaurar notas/estado/material guardados (por orden + punto de servicio)
+      var note = savedNotes[expanded.oid+'|'+expanded.aid];
       if(note) {
         if(note.em_m) expanded.em_m = note.em_m;
         if(note.nt_m) expanded.nt_m = note.nt_m;
@@ -1160,11 +1160,11 @@ function inicializarCalendario() {
 }
 
 function saveToLocalStorage() {
-  // Guardar solo notas/estado/material (liviano)
+  // Guardar solo notas/estado/material (liviano), por orden + punto de servicio
   var notes = {};
   Object.values(osIdx).flat().forEach(function(ev) {
     if(ev.oid && (ev.em_m || ev.nt_m || ev.mat)) {
-      notes[ev.oid] = {em_m:ev.em_m||'', nt_m:ev.nt_m||'', mat:ev.mat||''};
+      notes[ev.oid+'|'+ev.aid] = {em_m:ev.em_m||'', nt_m:ev.nt_m||'', mat:ev.mat||''};
     }
   });
   try {
@@ -1358,20 +1358,20 @@ function processExcelRows(rows, nombre) {
     return max ? v.substring(0, max) : v;
   }
 
-  // Preservar notas/estado/material actuales
+  // Preservar notas/estado/material actuales (clave: orden + punto de servicio)
   var savedNotes = {};
   try { var sn=localStorage.getItem('cal_notes'); if(sn) savedNotes=JSON.parse(sn); } catch(e){}
   Object.values(osIdx).flat().forEach(function(ev){
     if(ev.oid && (ev.em_m||ev.nt_m||ev.mat)) {
-      savedNotes[ev.oid]={em_m:ev.em_m||'',nt_m:ev.nt_m||'',mat:ev.mat||''};
+      savedNotes[ev.oid+'|'+ev.aid]={em_m:ev.em_m||'',nt_m:ev.nt_m||'',mat:ev.mat||''};
     }
   });
 
-  // Guardar OS previas para merge
+  // Guardar OS previas para merge (misma clave compuesta)
   var prevMap = {};
   Object.entries(osIdx).forEach(function(entry){
     entry[1].forEach(function(ev){
-      if(ev.oid) prevMap[ev.oid]={ev:ev,fecha:entry[0]};
+      if(ev.oid) prevMap[ev.oid+'|'+ev.aid]={ev:ev,fecha:entry[0]};
     });
   });
 
@@ -1385,11 +1385,16 @@ function processExcelRows(rows, nombre) {
 
     var oid = getVal(row, COL.oid);
     if(!oid){ skip++; return; }
-    var aid = getVal(row, COL.aid) || oid+'-a';
+    // Sin columna ASSIGNEE_ID explícita: derivar un id de punto de servicio
+    // a partir de la dirección, para no colapsar órdenes con varios
+    // apartamentos/medidores (mismo ID ORDEN, distinta DIRECCIÓN) en una sola fila.
+    var dirVal = getVal(row, COL.dir, 80);
+    var aid = getVal(row, COL.aid) || (dirVal ? oid+'|'+dirVal : oid+'-a');
+    var key = oid+'|'+aid;
     var em  = getVal(row, COL.email);
     var stRaw = getVal(row, COL.status);
     var st  = mapEstado(stRaw) || (stRaw.toLowerCase()==='done'?'done':'pending');
-    var prev= savedNotes[oid]||{};
+    var prev= savedNotes[key]||{};
 
     var ev = {
       oid: oid, aid: aid, fecha: fecha,
@@ -1401,7 +1406,7 @@ function processExcelRows(rows, nombre) {
       op:  getVal(row, COL.op, 40),
       em:  em, al: getAliado(em),
       tec: getVal(row, COL.tec, 80) || getVal(row, COL.op, 80),
-      dir: getVal(row, COL.dir, 80),
+      dir: dirVal,
       cert:getVal(row, COL.cert, 40),
       des: getVal(row, COL.des, 200),
       obs: getVal(row, COL.obs, 200),
@@ -1411,9 +1416,9 @@ function processExcelRows(rows, nombre) {
       nt_m:prev.nt_m||'', mat:prev.mat||''
     };
 
-    // Merge incremental
+    // Merge incremental (por orden + punto de servicio, no solo por orden)
     if(!osIdx[fecha]) osIdx[fecha]=[];
-    var existIdx=osIdx[fecha].findIndex(function(e){return e.oid===oid;});
+    var existIdx=osIdx[fecha].findIndex(function(e){return e.oid===oid&&e.aid===aid;});
     if(existIdx>=0){
       // Actualizar conservando anotaciones
       var ex=osIdx[fecha][existIdx];
@@ -1422,10 +1427,10 @@ function processExcelRows(rows, nombre) {
       ev.mat=ex.mat||ev.mat;
       osIdx[fecha][existIdx]=ev;
     } else {
-      // OS en otra fecha? mover
-      var old=prevMap[oid];
+      // Este punto de servicio, ¿estaba en otra fecha? mover
+      var old=prevMap[key];
       if(old && old.fecha!==fecha && osIdx[old.fecha]) {
-        osIdx[old.fecha]=osIdx[old.fecha].filter(function(e){return e.oid!==oid;});
+        osIdx[old.fecha]=osIdx[old.fecha].filter(function(e){return !(e.oid===oid&&e.aid===aid);});
         if(!osIdx[old.fecha].length) delete osIdx[old.fecha];
         ev.em_m=old.ev.em_m||ev.em_m;
         ev.nt_m=old.ev.nt_m||ev.nt_m;
