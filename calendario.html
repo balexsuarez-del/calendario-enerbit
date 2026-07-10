@@ -624,6 +624,7 @@ textarea.fi{resize:vertical;min-height:60px}
 <!-- BARRA DE SELECCIÓN DE OS -->
 <div class="sel-bar" id="sel-bar">
   <span><b id="sel-count">0</b> OS marcadas ⭐</span>
+  <button onclick="toggleOnlySelected()" id="sel-filter-btn">🔍 Mostrar solo estas</button>
   <button onclick="clearSelectedOS()">Limpiar selección</button>
 </div>
 
@@ -924,6 +925,7 @@ function addCustomEmpresa() {
 // ── SELECCIÓN DE OS → RESALTE EN CALENDARIO ────────────────────
 let selectedOS = new Set();
 try { selectedOS = new Set(JSON.parse(localStorage.getItem('cal_selectedOS') || '[]')); } catch(e) {}
+let onlySelectedMode = false;
 function osKey(oid, aid) { return oid + '|' + aid; }
 function saveSelectedOS() {
   try { localStorage.setItem('cal_selectedOS', JSON.stringify([...selectedOS])); } catch(e) {}
@@ -934,26 +936,43 @@ function toggleSelectOS(oid, aid, evt) {
   if(selectedOS.has(k)) selectedOS.delete(k); else selectedOS.add(k);
   saveSelectedOS();
   updateSelBar();
-  renderCalendar();
-  if(document.getElementById('view-week') && document.getElementById('view-week').style.display !== 'none') renderWeek();
+  if(onlySelectedMode) applyFilters(); else {
+    renderCalendar();
+    if(document.getElementById('view-week') && document.getElementById('view-week').style.display !== 'none') renderWeek();
+  }
 }
 function clearSelectedOS() {
   selectedOS.clear();
   saveSelectedOS();
+  if(onlySelectedMode){ onlySelectedMode=false; updateSelBar(); applyFilters(); }
+  else {
+    updateSelBar();
+    renderCalendar();
+    if(document.getElementById('view-week') && document.getElementById('view-week').style.display !== 'none') renderWeek();
+    renderPaneContent();
+  }
+}
+function toggleOnlySelected() {
+  if(selectedOS.size===0){ toast('Marca al menos una OS primero','err'); return; }
+  onlySelectedMode = !onlySelectedMode;
   updateSelBar();
-  renderCalendar();
-  if(document.getElementById('view-week') && document.getElementById('view-week').style.display !== 'none') renderWeek();
-  renderPaneContent();
+  applyFilters();
+  toast(onlySelectedMode?'Mostrando solo las OS marcadas':'Volviendo a mostrar todas las OS','ok');
 }
 function updateSelBar() {
   var bar = document.getElementById('sel-bar');
   if(!bar) return;
   var cnt = document.getElementById('sel-count');
+  var fbtn = document.getElementById('sel-filter-btn');
   if(selectedOS.size > 0) {
     bar.style.display = 'flex';
     if(cnt) cnt.textContent = selectedOS.size;
   } else {
     bar.style.display = 'none';
+  }
+  if(fbtn){
+    fbtn.textContent = onlySelectedMode ? '↺ Ver todas' : '🔍 Mostrar solo estas';
+    fbtn.style.background = onlySelectedMode ? '#F59E0B' : 'rgba(255,255,255,.15)';
   }
 }
 
@@ -1628,6 +1647,7 @@ function applyFilters() {
       if(mat&&(ev.mat||''). trim()!==mat) return false;
       if(tec&&!nrm((ev.tec||'')+' '+(ev.op||'')).includes(tec)) return false;
       if(txt){const full=nrm([ev.ci,ev.sta,ev.tc,ev.op,ev.tec,ev.al,ev.des,ev.obs,ev.oid].join(' ')); if(!full.includes(txt)) return false;}
+      if(onlySelectedMode && !selectedOS.has(osKey(ev.oid,ev.aid))) return false;
       return true;
     });
     if(f.length) filtOS[date]=f;
@@ -1641,6 +1661,7 @@ function applyFilters() {
 function clearAllFilters() {
   ['f-typ','f-al','f-sta','f-mat','f-tec','f-txt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   clearMS('dep'); clearMS('cit');
+  onlySelectedMode=false; updateSelBar();
   applyFilters();
 }
 
