@@ -465,7 +465,20 @@ textarea.fi{resize:vertical;min-height:60px}
 
   <div class="filter-group">
     <span class="filter-label">Tipo</span>
-    <select class="filter-select" id="f-typ" onchange="applyFilters()"><option value="">Todos</option></select>
+    <div class="ms-wrap" id="typ-wrap">
+      <button class="ms-btn" onclick="toggleMS('typ',event)">
+        <span id="typ-lbl">Todos</span>
+        <span class="ms-count" id="typ-cnt" style="display:none">0</span> ▾
+      </button>
+      <div class="ms-drop" id="typ-drop">
+        <div class="ms-search"><input type="text" placeholder="Buscar..." oninput="searchMS('typ',this.value)"></div>
+        <div class="ms-list" id="typ-list"></div>
+        <div class="ms-footer">
+          <button class="ms-clear" onclick="clearMS('typ')">Limpiar</button>
+          <button class="ms-all" onclick="allMS('typ')">Todos</button>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="filter-group">
     <span class="filter-label">Aliado</span>
@@ -1062,6 +1075,7 @@ document.addEventListener('DOMContentLoaded', function() {
   document.addEventListener('click', function(e) {
     if(!e.target.closest('#dep-wrap')) closeMSAll('dep');
     if(!e.target.closest('#cit-wrap')) closeMSAll('cit');
+    if(!e.target.closest('#typ-wrap')) closeMSAll('typ');
   });
   updateSelBar();
   // Siempre intentar cargar __OS__ incrustado primero
@@ -1517,7 +1531,7 @@ async function doSync() {
 }
 
 // ── MULTISELECT ───────────────────────────────────────────────
-const msData = { dep:{all:[],sel:new Set()}, cit:{all:[],sel:new Set()} };
+const msData = { dep:{all:[],sel:new Set()}, cit:{all:[],sel:new Set()}, typ:{all:[],sel:new Set()} };
 
 function toggleMS(key, event) {
   if(event) event.stopPropagation();
@@ -1592,7 +1606,7 @@ function updateMSBtn(key) {
   const lbl=document.getElementById(`${key}-lbl`);
   const cnt=document.getElementById(`${key}-cnt`);
   if(sel.size===0||sel.size===all.length){
-    lbl.textContent=key==='dep'?'Todos':'Todas'; cnt.style.display='none';
+    lbl.textContent=(key==='cit')?'Todas':'Todos'; cnt.style.display='none';
   } else {
     lbl.textContent=sel.size===1?[...sel][0]:`${sel.size} selec.`;
     cnt.textContent=sel.size; cnt.style.display='inline';
@@ -1618,18 +1632,18 @@ function buildFilters() {
     [...new Set(items)].filter(Boolean).sort().forEach(v=>s.insertAdjacentHTML('beforeend',`<option>${v}</option>`));
     if(pv) s.value=pv;
   };
-  fill('f-typ',flat.map(e=>e.tc));
   fill('f-al', flat.map(e=>e.al));
   fill('f-tec',flat.map(e=>e.tec||e.op));
   allDeps=[...new Set(flat.map(e=>e.sta).filter(Boolean))].sort();
   allCits=[...new Set(flat.map(e=>e.ci).filter(Boolean))].sort();
-  msData.dep.sel.clear(); msData.cit.sel.clear();
+  const allTyps=[...new Set(flat.map(e=>e.tc).filter(Boolean))].sort();
+  msData.dep.sel.clear(); msData.cit.sel.clear(); msData.typ.sel.clear();
   buildMSList('dep', allDeps);
   buildMSList('cit', allCits);
+  buildMSList('typ', allTyps);
 }
 
 function applyFilters() {
-  const typ=document.getElementById('f-typ')?.value||'';
   const al=document.getElementById('f-al')?.value||'';
   const sta=document.getElementById('f-sta')?.value||'';
   const mat=document.getElementById('f-mat')?.value||'';
@@ -1641,7 +1655,7 @@ function applyFilters() {
       const ds=calcStatus(ev);
       if(msData.dep.sel.size>0&&!msData.dep.sel.has(ev.sta)) return false;
       if(msData.cit.sel.size>0&&!msData.cit.sel.has(ev.ci))  return false;
-      if(typ&&ev.tc!==typ) return false;
+      if(msData.typ.sel.size>0&&!msData.typ.sel.has(ev.tc))  return false;
       if(al&&ev.al!==al)   return false;
       if(sta&&ds!==sta)    return false;
       if(mat&&(ev.mat||''). trim()!==mat) return false;
@@ -1659,8 +1673,8 @@ function applyFilters() {
 }
 
 function clearAllFilters() {
-  ['f-typ','f-al','f-sta','f-mat','f-tec','f-txt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  clearMS('dep'); clearMS('cit');
+  ['f-al','f-sta','f-mat','f-tec','f-txt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  clearMS('dep'); clearMS('cit'); clearMS('typ');
   onlySelectedMode=false; updateSelBar();
   applyFilters();
 }
