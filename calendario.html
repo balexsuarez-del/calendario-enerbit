@@ -507,7 +507,7 @@ textarea.fi{resize:vertical;min-height:60px}
     <span class="filter-label">Técnico</span>
     <select class="filter-select" id="f-tec" onchange="applyFilters()"><option value="">Todos</option></select>
   </div>
-  <input type="text" class="filter-input" id="f-txt" placeholder="🔍 Buscar..." oninput="applyFilters()">
+  <input type="text" class="filter-input" id="f-txt" placeholder="🔍 Buscar..." oninput="debounce('f-txt', applyFilters, 250)">
   <button class="btn btn-ghost btn-sm" onclick="clearAllFilters()">✕ Limpiar</button>
 
   <!-- Navegación mes -->
@@ -601,7 +601,7 @@ textarea.fi{resize:vertical;min-height:60px}
       <!-- Tab OS -->
       <div id="pane-os">
         <div class="search-bar">
-          <input type="text" class="search-input" id="day-search" placeholder="🔍 Buscar OS..." oninput="renderOSList(selDate)">
+          <input type="text" class="search-input" id="day-search" placeholder="🔍 Buscar OS..." oninput="debounce('day-search', function(){renderOSList(selDate);}, 200)">
           <button class="btn btn-secondary btn-sm" onclick="openCreateOS()">+ Crear OS</button>
         </div>
         <div class="os-list" id="os-list"></div>
@@ -2272,6 +2272,13 @@ function setSyncUI(state,msg){
   const dot=document.getElementById('sync-dot'), lbl=document.getElementById('sync-lbl');
   if(dot) dot.className='sync-dot'+(state==='busy'?' busy':state==='ok'?' ok':state==='err'?' err':'');
   if(lbl) lbl.textContent=msg||'';
+}
+
+// ── DEBOUNCE (evita recalcular el calendario en cada tecla) ────
+var _debounceTimers = {};
+function debounce(key, fn, wait){
+  clearTimeout(_debounceTimers[key]);
+  _debounceTimers[key] = setTimeout(fn, wait);
 }
 
 function setProg(pct,msg){
