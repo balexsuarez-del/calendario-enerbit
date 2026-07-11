@@ -1451,6 +1451,8 @@ function processExcelRows(rows, nombre) {
   buildFilters();
   applyFilters();
   saveToLocalStorage();
+  setProg(100,'Listo');
+  setTimeout(function(){ setProg(null); }, 500);
   setSyncUI('ok', ok+' OS · '+nombre);
   toast(ok+' ordenes cargadas'+(skip?' ('+skip+' sin fecha)':''), 'ok');
   startSync();
