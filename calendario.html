@@ -1705,38 +1705,24 @@ async function doSync() {
     if(data.ok && data.changes && data.changes.length) {
       let updated=0;
       data.changes.forEach(ch => {
-        Object.values(osIdx).flat().forEach(ev => {
-          if(ev.oid===ch.oid && ev.aid===ch.aid) {
-            if(ch.campo==='estado_manual') ev.em_m=ch.valor;
-            if(ch.campo==='material')      ev.mat=ch.valor;
-            if(ch.campo==='nota')          ev.nt_m=ch.valor;
-            if(ch.campo==='fecha'){
-              // Mover OS a nueva fecha
-              const newDate=ch.valor;
-              const oldDate=Object.keys(osIdx).find(d=>osIdx[d].some(e=>e.oid===ev.oid&&e.aid===ev.aid));
-              if(oldDate&&oldDate!==newDate){
-                osIdx[oldDate]=osIdx[oldDate].filter(e=>!(e.oid===ev.oid&&e.aid===ev.aid));
-                if(!osIdx[newDate])osIdx[newDate]=[];
-                osIdx[newDate].push(ev);
+        Object.entries(osIdx).forEach(([fecha, evs]) => {
+          evs.forEach(ev => {
+            if(ev.oid===ch.order_id && ev.aid===ch.assignee_id) {
+              if(ch.estado_manual !== undefined)   ev.em_m = ch.estado_manual;
+              if(ch.material_estado !== undefined) ev.mat  = ch.material_estado;
+              if(ch.nota_manual !== undefined)     ev.nt_m = ch.nota_manual;
+              if(ch.fecha !== undefined && ch.fecha && ch.fecha !== fecha) {
+                // Mover OS a la nueva fecha que alguien más asignó
+                osIdx[fecha] = osIdx[fecha].filter(e => e !== ev);
+                if(!osIdx[ch.fecha]) osIdx[ch.fecha] = [];
+                osIdx[ch.fecha].push(ev);
               }
+              updated++;
             }
-            if(ch.campo==='actividad'){
-              // Recargar actividades
-              gasGet({action:'getActividades'}).then(d=>{
-                if(d.ok&&d.data){
-                  actEv={};
-                  d.data.forEach(act=>{
-                    if(!actEv[act.fecha])actEv[act.fecha]=[];
-                    actEv[act.fecha].push({id:act.id,titulo:act.titulo,cuadrilla:act.cuadrilla,departamento:act.departamento,hora:act.hora,obs:act.obs,color:act.color});
-                  });
-                }
-              });
-            }
-            updated++;
-          }
+          });
         });
       });
-      if(updated>0){applyFilters();if(selDate)renderPaneContent();}
+      if(updated>0){ applyFilters(); if(selDate) renderPaneContent(); saveToLocalStorage(); }
       lastSyncTs = data.ts || Date.now();
       setSyncUI('ok', updated>0?`${updated} cambios`:'Al día');
     } else {
@@ -2217,14 +2203,14 @@ async function saveEstado(oid,aid){
   const val=document.getElementById(`est-${oid}-${aid}`)?.value||'';
   patchOS(oid,aid,{em_m:val});
   renderOSList(selDate);
-  const d=await gasPost({action:'updateEstado',oid,aid,valor:val});
+  const d=await gasPost({action:'updateOSEstado',order_id:oid,assignee_id:aid,estado_manual:val});
   toast(d?.ok?'Estado guardado ✓':' Estado guardado (local)','ok');
 }
 
 async function saveMaterial(oid,aid){
   const val=document.getElementById(`mat-${oid}-${aid}`)?.value||'';
   patchOS(oid,aid,{mat:val});
-  const d=await gasPost({action:'updateMaterial',oid,aid,valor:val});
+  const d=await gasPost({action:'updateOSMaterial',order_id:oid,assignee_id:aid,material_estado:val});
   toast(d?.ok?'Material guardado ✓':' Material guardado (local)','ok');
 }
 
@@ -2232,7 +2218,7 @@ async function saveNota(oid,aid){
   const val=document.getElementById(`nota-${oid}-${aid}`)?.value||'';
   patchOS(oid,aid,{nt_m:val});
   renderOSList(selDate);
-  const d=await gasPost({action:'updateNota',oid,aid,valor:val});
+  const d=await gasPost({action:'updateOSNota',order_id:oid,assignee_id:aid,nota_manual:val});
   toast(d?.ok?'Nota guardada ✓':' Nota guardada (local)','ok');
 }
 
@@ -2240,7 +2226,7 @@ async function deleteOS(oid,aid){
   if(!confirm('¿Eliminar esta OS?')) return;
   Object.keys(osIdx).forEach(date=>{osIdx[date]=osIdx[date].filter(e=>!(e.oid===oid&&e.aid===aid));});
   applyFilters(); renderOSList(selDate);
-  await gasPost({action:'deleteOS',oid,aid});
+  await gasPost({action:'deleteOS',order_id:oid,assignee_id:aid});
   toast('OS eliminada','ok');
 }
 
@@ -2261,7 +2247,7 @@ async function confirmMover(){
   if(!newDate){toast('Selecciona una fecha','err');return;}
   moverOS(oid,aid,newDate,hora);
   closeMvModal();
-  await gasPost({action:'updateFecha',oid,aid,fecha_nueva:newDate,hora});
+  await gasPost({action:'updateOSFecha',order_id:oid,assignee_id:aid,fecha:newDate,hora:hora});
   toast('OS movida ✓','ok');
 }
 
@@ -2288,7 +2274,7 @@ function dDrop(e,targetDate){
   e.preventDefault();e.currentTarget.classList.remove('drag-over');
   if(!dragOid||dragFrom===targetDate) return;
   moverOS(dragOid,dragAid,targetDate,'');
-  gasPost({action:'updateFecha',oid:dragOid,aid:dragAid,fecha_nueva:targetDate}).then(()=>{});
+  gasPost({action:'updateOSFecha',order_id:dragOid,assignee_id:dragAid,fecha:targetDate}).then(()=>{});
   toast(`OS movida a ${targetDate}`,'ok');
   dragOid='';dragAid='';dragFrom='';
 }
@@ -2426,7 +2412,7 @@ async function saveCreateOS(){
   buildFilters(); applyFilters(); closeCreateOS();
   toast('OS creada ✓','ok');
   if(document.getElementById('cal-screen').style.display==='block') setTimeout(()=>openPanel(fecha),200);
-  await gasPost({action:'saveOS',data:[{...ev}]});
+  pushFullDatasetToGAS();
 }
 
 // ── EXPORT PNG ────────────────────────────────────────────────
