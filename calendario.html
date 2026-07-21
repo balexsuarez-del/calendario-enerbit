@@ -840,7 +840,7 @@ let selDate=null, activeTab='os', editActId=null, selActColor=ACT_COLORS[0].bg;
 let selectedDeps=new Set(), selectedCits=new Set();
 let allDeps=[], allCits=[];
 let currentView='month', dayViewDate=new Date();
-let lastSyncTs=0, syncTimer=null;
+let lastSyncTs=0, syncTimer=null, fullSyncTimer=null;
 let empresa='eb';
 
 
@@ -1033,6 +1033,132 @@ async function gasPost(data) {
   }
 }
 
+// ── SINCRONIZACIÓN DEL DATASET COMPLETO (Google Sheets = fuente compartida) ──
+// El Apps Script ya soporta guardar/traer TODO el listado de OS (acciones
+// 'saveOS' y 'getOS'), pero antes el calendario solo usaba 'getChanges'
+// (sincroniza notas/estado puntuales, nunca el archivo completo). Estas
+// funciones cierran ese hueco: al cargar un Excel se sube todo a Sheets, y
+// cualquiera que abra el calendario (o siga con él abierto) recibe esa
+// misma base compartida, no solo lo que cargó en su propio navegador.
+
+function mapEvToGasRow(ev, fecha) {
+  return {
+    order_id: ev.oid||'', assignee_id: ev.aid||'',
+    fecha: fecha || ev.fecha || '', hora: ev.ti||'',
+    estado: ev.st||'', estado_manual: ev.em_m||'',
+    city: ev.ci||'', state: ev.sta||'',
+    type_code: ev.tc||'', type_name: ev.tn||'',
+    operator: ev.op||'', email: ev.em||'',
+    aliado: ev.al||'', tecnico: ev.tec||'',
+    dir: ev.dir||'', cert: ev.cert||'',
+    description: ev.des||'', obs: ev.obs||'',
+    cancel_reason: ev.cr||'', cancel_obs: ev.co||'',
+    nota_manual: ev.nt_m||'', material_estado: ev.mat||''
+  };
+}
+
+function mapGasRowToEv(row) {
+  var oid = row.order_id||'';
+  return {
+    oid: oid, aid: row.assignee_id || (oid+'-a'),
+    fecha: row.fecha||'',
+    st: row.estado||'pending', em_m: row.estado_manual||'',
+    ci: row.city||'', sta: row.state||'',
+    tc: row.type_code||'', tn: row.type_name||row.type_code||'',
+    op: row.operator||'', em: row.email||'',
+    al: row.aliado || getAliado(row.email||''),
+    tec: row.tecnico || row.operator || '',
+    dir: row.dir||'', cert: row.cert||'',
+    des: row.description||'', obs: row.obs||'',
+    cr: row.cancel_reason||'', co: row.cancel_obs||'',
+    ti: row.hora||'', nt_m: row.nota_manual||'', mat: row.material_estado||''
+  };
+}
+
+// Sube TODO el dataset actual (osIdx) a Google Sheets. saveOS reemplaza el
+// contenido completo de la hoja, así que siempre hay que mandar todo junto
+// (no por lotes) para no perder lo que ya estaba compartido.
+async function pushFullDatasetToGAS() {
+  var all = [];
+  Object.entries(osIdx).forEach(function(entry) {
+    var fecha = entry[0];
+    entry[1].forEach(function(ev) {
+      if(ev.oid) all.push(mapEvToGasRow(ev, fecha));
+    });
+  });
+  if(!all.length) return false;
+  try {
+    var res = await gasPost({action:'saveOS', data: all});
+    return !!(res && res.ok);
+  } catch(e) {
+    console.warn('No se pudo subir el dataset completo a Google Sheets:', e);
+    return false;
+  }
+}
+
+// Trae TODO el dataset compartido de Google Sheets y REEMPLAZA osIdx (uso: al
+// abrir el calendario por primera vez, cuando aún no hay nada local).
+async function pullFullDatasetFromGAS() {
+  try {
+    var data = await gasGet({action:'getOS'});
+    if(data && data.ok && data.data && data.data.length) {
+      var newIdx = {};
+      data.data.forEach(function(row) {
+        var ev = mapGasRowToEv(row);
+        if(!ev.oid || !ev.fecha) return;
+        if(!newIdx[ev.fecha]) newIdx[ev.fecha] = [];
+        newIdx[ev.fecha].push(ev);
+      });
+      if(Object.keys(newIdx).length) { osIdx = newIdx; return true; }
+    }
+  } catch(e) {
+    console.warn('No se pudo traer el dataset completo de Google Sheets:', e);
+  }
+  return false;
+}
+
+// Trae el dataset de Google Sheets y lo FUSIONA con lo que ya está en pantalla
+// (agrega OS nuevas que otros hayan cargado, actualiza las existentes) sin
+// perder nada que este navegador tenga localmente. Uso: refresco periódico.
+async function mergeFullDatasetFromGAS() {
+  try {
+    var data = await gasGet({action:'getOS'});
+    if(!(data && data.ok && data.data)) return;
+    var byKey = {};
+    Object.entries(osIdx).forEach(function(entry) {
+      var fecha = entry[0];
+      entry[1].forEach(function(ev) { byKey[ev.oid+'|'+ev.aid] = {ev:ev, fecha:fecha}; });
+    });
+    var added = 0;
+    data.data.forEach(function(row) {
+      var mapped = mapGasRowToEv(row);
+      if(!mapped.oid || !mapped.fecha) return;
+      var key = mapped.oid+'|'+mapped.aid;
+      var found = byKey[key];
+      if(!found) {
+        if(!osIdx[mapped.fecha]) osIdx[mapped.fecha] = [];
+        osIdx[mapped.fecha].push(mapped);
+        added++;
+      } else if(found.fecha !== mapped.fecha) {
+        var oldArr = osIdx[found.fecha];
+        if(oldArr) osIdx[found.fecha] = oldArr.filter(function(e){ return e!==found.ev; });
+        Object.assign(found.ev, mapped);
+        if(!osIdx[mapped.fecha]) osIdx[mapped.fecha] = [];
+        osIdx[mapped.fecha].push(found.ev);
+      } else {
+        Object.assign(found.ev, mapped);
+      }
+    });
+    if(added > 0) {
+      buildFilters();
+      applyFilters();
+      if(selDate) renderPaneContent();
+      saveToLocalStorage();
+      toast(added+' OS nuevas sincronizadas desde Google Sheets', 'ok');
+    }
+  } catch(e) { /* silencioso — doSync ya reporta el estado de conexión */ }
+}
+
 // ── ALIADO ───────────────────────────────────────────────────
 function mapEstado(s) {
   s=(s||'').toLowerCase();
@@ -1089,7 +1215,7 @@ document.addEventListener('DOMContentLoaded', function() {
   cargarDatosIniciales();
 });
 
-function cargarDatosIniciales() {
+async function cargarDatosIniciales() {
   // Definir mapas de expansion localmente
   var AL = {eB:'enerBit',CE:'Circuitos Electricas',C3:'C3 Pronto Servicios',
              MH:'MHEV Ingenieria',VG:'Valgaro',CG:'CGM Support',OC:'OCA Global',kT:'KantiA'};
@@ -1101,8 +1227,27 @@ function cargarDatosIniciales() {
     if(sn) savedNotes = JSON.parse(sn);
   } catch(e) {}
 
-  // 1) Preferir el dataset COMPLETO guardado en este navegador (más reciente que lo
-  //    incrustado en el archivo, ya que refleja la última carga de Excel/CSV del usuario)
+  // 0) Intentar PRIMERO el dataset compartido completo de Google Sheets — así todos
+  //    los que abran el calendario ven la misma base, no solo lo que cada uno cargó.
+  var gotFromGAS = false;
+  try { gotFromGAS = await pullFullDatasetFromGAS(); } catch(e) {}
+  if(gotFromGAS) {
+    Object.values(osIdx).flat().forEach(function(ev){
+      var note = savedNotes[ev.oid+'|'+ev.aid];
+      if(note) {
+        if(note.em_m) ev.em_m = note.em_m;
+        if(note.nt_m) ev.nt_m = note.nt_m;
+        if(note.mat)  ev.mat  = note.mat;
+      }
+    });
+    try { var saG = localStorage.getItem('cal_acts'); if(saG) Object.assign(actEv, JSON.parse(saG)); } catch(e) {}
+    saveToLocalStorage();
+    inicializarCalendario();
+    return;
+  }
+
+  // 1) Sin Google Sheets disponible: preferir el dataset COMPLETO guardado en este
+  //    navegador (más reciente que lo incrustado en el archivo)
   var localFull = null;
   try {
     var lf = localStorage.getItem('cal_full_os');
@@ -1496,6 +1641,11 @@ function processExcelRows(rows, nombre) {
   setSyncUI('ok', ok+' OS · '+nombre);
   toast(ok+' ordenes cargadas'+(skip?' ('+skip+' sin fecha)':''), 'ok');
   startSync();
+  // Compartir con todos: subir el dataset completo a Google Sheets
+  setSyncUI('busy','Subiendo a Google Sheets...');
+  pushFullDatasetToGAS().then(function(success){
+    setSyncUI(success?'ok':'err', success?'Compartido con todos':'GAS offline - datos locales OK');
+  });
 }
 
 function showCalScreen() {
@@ -1512,6 +1662,7 @@ function resetApp() {
   selDate=null; allDeps=[]; allCits=[]; selectedDeps.clear(); selectedCits.clear();
   depColorMap={}; depColorIdx=0;
   if(syncTimer){clearInterval(syncTimer);syncTimer=null;}
+  if(fullSyncTimer){clearInterval(fullSyncTimer);fullSyncTimer=null;}
   // Limpiar localStorage
   try {
     localStorage.removeItem('cal_notes');
@@ -1530,6 +1681,8 @@ function resetApp() {
 function startSync() {
   if(syncTimer) clearInterval(syncTimer);
   syncTimer = setInterval(doSync, 20000);
+  if(fullSyncTimer) clearInterval(fullSyncTimer);
+  fullSyncTimer = setInterval(mergeFullDatasetFromGAS, 60000);
 }
 
 async function doSync() {
