@@ -1095,7 +1095,37 @@ function cargarDatosIniciales() {
              MH:'MHEV Ingenieria',VG:'Valgaro',CG:'CGM Support',OC:'OCA Global',kT:'KantiA'};
   var ST = {D:'done', C:'cancel', R:'reprog', P:'pending'};
 
-  // Leer datos incrustados
+  var savedNotes = {};
+  try {
+    var sn = localStorage.getItem('cal_notes');
+    if(sn) savedNotes = JSON.parse(sn);
+  } catch(e) {}
+
+  // 1) Preferir el dataset COMPLETO guardado en este navegador (más reciente que lo
+  //    incrustado en el archivo, ya que refleja la última carga de Excel/CSV del usuario)
+  var localFull = null;
+  try {
+    var lf = localStorage.getItem('cal_full_os');
+    if(lf) localFull = JSON.parse(lf);
+  } catch(e) {}
+
+  if(localFull && Object.keys(localFull).length > 0) {
+    osIdx = localFull;
+    // Reaplicar notas guardadas (por si se editaron después del último guardado completo)
+    Object.values(osIdx).flat().forEach(function(ev){
+      var note = savedNotes[ev.oid+'|'+ev.aid];
+      if(note) {
+        if(note.em_m) ev.em_m = note.em_m;
+        if(note.nt_m) ev.nt_m = note.nt_m;
+        if(note.mat)  ev.mat  = note.mat;
+      }
+    });
+    try { var sa0 = localStorage.getItem('cal_acts'); if(sa0) Object.assign(actEv, JSON.parse(sa0)); } catch(e) {}
+    inicializarCalendario();
+    return;
+  }
+
+  // 2) Sin nada guardado localmente: usar los datos incrustados en el archivo (línea base compartida)
   var rawOS = (typeof __OS_RAW__ !== 'undefined') ? __OS_RAW__ : 
               (typeof __OS__ !== 'undefined') ? __OS__ : null;
 
@@ -1105,12 +1135,6 @@ function cargarDatosIniciales() {
   }
 
   // Expandir datos (soporta formato compacto y formato completo)
-  var savedNotes = {};
-  try {
-    var sn = localStorage.getItem('cal_notes');
-    if(sn) savedNotes = JSON.parse(sn);
-  } catch(e) {}
-
   osIdx = {};
   Object.entries(rawOS).forEach(function(entry) {
     var fecha = entry[0], evs = entry[1];
@@ -1167,7 +1191,7 @@ function inicializarCalendario() {
 }
 
 function saveToLocalStorage() {
-  // Guardar solo notas/estado/material (liviano), por orden + punto de servicio
+  // Guardar notas/estado/material (liviano), por orden + punto de servicio
   var notes = {};
   Object.values(osIdx).flat().forEach(function(ev) {
     if(ev.oid && (ev.em_m || ev.nt_m || ev.mat)) {
@@ -1178,6 +1202,15 @@ function saveToLocalStorage() {
     localStorage.setItem('cal_notes', JSON.stringify(notes));
     localStorage.setItem('cal_acts', JSON.stringify(actEv));
   } catch(e) {}
+  // Guardar también el dataset COMPLETO de OS, para que sobreviva a recargar la página
+  try {
+    localStorage.setItem('cal_full_os', JSON.stringify(osIdx));
+  } catch(e) {
+    // Límite de espacio del navegador excedido (localStorage ~5-10MB) — las notas de arriba
+    // ya quedaron guardadas, pero el dataset completo no cabe. Avisar al usuario.
+    console.warn('No se pudo guardar el dataset completo en localStorage:', e);
+    toast('⚠️ Demasiadas OS para guardar en este navegador — al recargar la página se perderán. Sincroniza con Google Sheets o carga menos días a la vez.', 'err');
+  }
 }
 
 async function loadFromGAS() {
@@ -1480,7 +1513,11 @@ function resetApp() {
   depColorMap={}; depColorIdx=0;
   if(syncTimer){clearInterval(syncTimer);syncTimer=null;}
   // Limpiar localStorage
-  try { localStorage.removeItem('cal_osIdx'); localStorage.removeItem('cal_actEv'); } catch(e){}
+  try {
+    localStorage.removeItem('cal_notes');
+    localStorage.removeItem('cal_acts');
+    localStorage.removeItem('cal_full_os');
+  } catch(e){}
   document.getElementById('upload-screen').style.display='';
   document.getElementById('cal-screen').style.display='none';
   ['btn-crear','btn-export','btn-reset'].forEach(id=>document.getElementById(id).classList.add('btn-hidden'));
