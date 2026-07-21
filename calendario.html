@@ -1057,11 +1057,24 @@ function mapEvToGasRow(ev, fecha) {
   };
 }
 
+function normalizeFechaFromGAS(raw) {
+  if(!raw) return '';
+  var s = String(raw).trim();
+  var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return m[1]+'-'+m[2]+'-'+m[3];
+  // Google Sheets puede haber convertido el texto a su propio tipo Fecha;
+  // al leerlo vuelve como algo tipo "Tue Jul 21 2026 00:00:00 GMT-0500 (...)".
+  // Parsearlo como Date y reformatear con dateKey (usa la fecha LOCAL, no UTC).
+  var d = new Date(s);
+  if(!isNaN(d.getTime())) return dateKey(d);
+  return '';
+}
+
 function mapGasRowToEv(row) {
   var oid = row.order_id||'';
   return {
     oid: oid, aid: row.assignee_id || (oid+'-a'),
-    fecha: row.fecha||'',
+    fecha: normalizeFechaFromGAS(row.fecha),
     st: row.estado||'pending', em_m: row.estado_manual||'',
     ci: row.city||'', sta: row.state||'',
     tc: row.type_code||'', tn: row.type_name||row.type_code||'',
