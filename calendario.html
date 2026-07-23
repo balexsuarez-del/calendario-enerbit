@@ -1587,7 +1587,13 @@ function processExcelRows(rows, nombre) {
     // a partir de la dirección, para no colapsar órdenes con varios
     // apartamentos/medidores (mismo ID ORDEN, distinta DIRECCIÓN) en una sola fila.
     var dirVal = getVal(row, COL.dir, 80);
-    var aid = getVal(row, COL.aid) || (dirVal ? oid+'|'+dirVal : oid+'-a');
+    var emailVal = getVal(row, COL.email, 60);
+    // Punto de servicio = orden + dirección + correo del aliado/contratista.
+    // Si dos aliados distintos atendieron la misma dirección (reasignación),
+    // quedan como 2 tarjetas separadas en vez de pisarse entre sí.
+    var aid = getVal(row, COL.aid) || (dirVal
+      ? oid+'|'+dirVal+(emailVal?'|'+emailVal.toLowerCase():'')
+      : oid+'-a');
     var key = oid+'|'+aid;
     var em  = getVal(row, COL.email);
     var stRaw = getVal(row, COL.status);
