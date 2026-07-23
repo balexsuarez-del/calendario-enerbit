@@ -1636,7 +1636,7 @@ function processExcelRows(rows, nombre) {
   depColorMap={}; depColorIdx=0;
   var ok=0, skip=0;
 
-  rows.forEach(function(row){
+  rows.forEach(function(row, rowIdx){
     var rawF = getVal(row, COL.fecha);
     var fecha = parseFecha(rawF);
     if(!fecha){ skip++; return; }
@@ -1650,10 +1650,11 @@ function processExcelRows(rows, nombre) {
     var emailVal = getVal(row, COL.email, 60);
     // Punto de servicio = orden + dirección + correo del aliado/contratista.
     // Si dos aliados distintos atendieron la misma dirección (reasignación),
-    // quedan como 2 tarjetas separadas en vez de pisarse entre sí.
-    var aid = getVal(row, COL.aid) || (dirVal
-      ? oid+'|'+dirVal+(emailVal?'|'+emailVal.toLowerCase():'')
-      : oid+'-a');
+    // quedan como 2 tarjetas separadas en vez de pisarse entre sí. Si no hay
+    // dirección (ej. OS de Normalización, que la traen dentro de la
+    // descripción), igual se incluye el correo para no perder esa distinción.
+    var aid = getVal(row, COL.aid) ||
+      (oid+'|'+(dirVal||'')+(emailVal?'|'+emailVal.toLowerCase():(dirVal?'':'|r'+rowIdx)));
     var key = oid+'|'+aid;
     var em  = getVal(row, COL.email);
     var stRaw = getVal(row, COL.status);
@@ -2225,6 +2226,9 @@ function osCardHTML(ev, key) {
         (ev.ti?'<span class="os-time">⏰'+ev.ti+'</span>':'')+
         '<span class="os-id">#'+(ev.oid||'').slice(-8)+'</span>'+
         changeBadge+
+      '</div>'+
+      '<div class="os-idline" style="font-size:.68rem;color:var(--gy);margin:2px 0 6px;word-break:break-word" title="'+(ev.oid||'')+'">'+
+        '🔑 '+(ev.oid||'—')+' · '+(ev.dir?ev.dir:'<i>Sin dirección</i>')+' · '+(ev.em?ev.em:'<i>Sin correo</i>')+
       '</div>'+
       '<div class="os-loc">📍 '+(ev.ci||'')+(ev.sta?', '+ev.sta:'')+(ev.dir?' — '+ev.dir:'')+
         '<br>👷 '+(ev.op||'')+(ev.cert?'<br>📄 Acta: '+ev.cert:'')+'</div>'+
