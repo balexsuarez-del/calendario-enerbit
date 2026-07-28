@@ -3141,7 +3141,22 @@ function renderAsstConfig(){
     '<div style="margin-top:10px">'+
       '<button class="btn btn-primary btn-sm" onclick="guardarCorreoArchivado()">Guardar correo</button>'+
     '</div>'+
-    '<div id="asst-cfg-result"></div>';
+    '<div id="asst-cfg-result"></div>'+
+    '<div class="asst-section-title" style="margin-top:18px">🗑️ Borrar por rango</div>'+
+    '<div class="asst-empty" style="text-align:left;margin-bottom:10px">'+
+      'Borra las OS de un día, semana o mes específico del calendario '+
+      'compartido. Pide confirmación antes de borrar — no hay deshacer.'+
+    '</div>'+
+    '<div class="asst-match-row"><span>Día</span>'+
+      '<input type="date" id="asst-del-dia" style="flex:1">'+
+      '<button class="btn btn-sm" onclick="borrarRangoAsst(\'dia\')">Borrar día</button></div>'+
+    '<div class="asst-match-row"><span>Semana</span>'+
+      '<input type="date" id="asst-del-semana" style="flex:1" title="Cualquier día de la semana a borrar">'+
+      '<button class="btn btn-sm" onclick="borrarRangoAsst(\'semana\')">Borrar semana</button></div>'+
+    '<div class="asst-match-row"><span>Mes</span>'+
+      '<input type="month" id="asst-del-mes" style="flex:1">'+
+      '<button class="btn btn-sm" onclick="borrarRangoAsst(\'mes\')">Borrar mes</button></div>'+
+    '<div id="asst-del-result"></div>';
   // Precargar el correo ya configurado, si existe
   gasGet({action:'getArchiveEmail'}).then(function(d){
     if(d && d.ok && d.email){
@@ -3149,6 +3164,59 @@ function renderAsstConfig(){
       if(el) el.value = d.email;
     }
   }).catch(function(){});
+}
+
+function calcularRangoBorrado(tipo){
+  if(tipo==='dia'){
+    const d = document.getElementById('asst-del-dia')?.value;
+    return d ? {desde:d, hasta:d} : null;
+  }
+  if(tipo==='semana'){
+    const d = document.getElementById('asst-del-semana')?.value;
+    if(!d) return null;
+    const p=d.split('-').map(Number);
+    const dt=new Date(p[0],p[1]-1,p[2]);
+    const dow=dt.getDay();
+    const desdeD=new Date(dt); desdeD.setDate(dt.getDate()-dow);
+    const hastaD=new Date(desdeD); hastaD.setDate(desdeD.getDate()+6);
+    return {desde:dateKey(desdeD), hasta:dateKey(hastaD)};
+  }
+  if(tipo==='mes'){
+    const v = document.getElementById('asst-del-mes')?.value; // "2026-07"
+    if(!v) return null;
+    const p=v.split('-').map(Number);
+    const desdeD=new Date(p[0],p[1]-1,1);
+    const hastaD=new Date(p[0],p[1],0);
+    return {desde:dateKey(desdeD), hasta:dateKey(hastaD)};
+  }
+  return null;
+}
+
+async function borrarRangoAsst(tipo){
+  const rango = calcularRangoBorrado(tipo);
+  if(!rango){ toast('Selecciona una fecha','err'); return; }
+
+  let total=0;
+  Object.keys(osIdx).forEach(function(fecha){
+    if(fecha>=rango.desde && fecha<=rango.hasta) total += osIdx[fecha].length;
+  });
+  if(!total){ toast('No hay OS en ese rango','err'); return; }
+
+  const etiqueta = rango.desde===rango.hasta ? rango.desde : (rango.desde+' a '+rango.hasta);
+  if(!confirm('¿Borrar '+total+' OS entre '+etiqueta+'? Esta acción no se puede deshacer y afecta a todos los colaboradores del calendario compartido.')) return;
+
+  Object.keys(osIdx).forEach(function(fecha){
+    if(fecha>=rango.desde && fecha<=rango.hasta) delete osIdx[fecha];
+  });
+  applyFilters();
+  if(selDate) renderPaneContent();
+  saveToLocalStorage();
+
+  const resEl = document.getElementById('asst-del-result');
+  if(resEl) resEl.innerHTML = '<div class="asst-answer">Borrando y sincronizando…</div>';
+  const ok = await pushFullDatasetToGAS();
+  if(resEl) resEl.innerHTML = '<div class="asst-answer">'+(ok?'✅ ':'⚠️ ')+total+' OS borradas ('+etiqueta+')'+(ok?' y sincronizadas con todos.':' — guardadas localmente, GAS offline.')+'</div>';
+  toast(total+' OS borradas','ok');
 }
 
 async function guardarCorreoArchivado(){
