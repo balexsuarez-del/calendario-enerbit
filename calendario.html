@@ -696,6 +696,7 @@ textarea.fi{resize:vertical;min-height:60px}
     <div class="asst-tab" data-tab="diagnostico" onclick="switchAsstTab('diagnostico')">Diagnóstico</div>
     <div class="asst-tab" data-tab="material" onclick="switchAsstTab('material')">Material/Notas</div>
     <div class="asst-tab" data-tab="exportar" onclick="switchAsstTab('exportar')">Exportar</div>
+    <div class="asst-tab" data-tab="config" onclick="switchAsstTab('config')">⚙️</div>
   </div>
   <div class="asst-body" id="asst-body"></div>
 </div>
@@ -2634,6 +2635,7 @@ function switchAsstTab(tab){
   if(tab==='preguntar') renderAsstPreguntar();
   else if(tab==='diagnostico') renderAsstDiagnostico();
   else if(tab==='exportar') renderAsstExportar();
+  else if(tab==='config') renderAsstConfig();
   else renderAsstMaterial();
 }
 
