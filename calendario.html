@@ -1650,13 +1650,16 @@ function processExcelRows(rows, nombre) {
     // apartamentos/medidores (mismo ID ORDEN, distinta DIRECCIÓN) en una sola fila.
     var dirVal = getVal(row, COL.dir, 80);
     var emailVal = getVal(row, COL.email, 60);
+    var opVal = getVal(row, COL.op, 60);
     // Punto de servicio = orden + dirección + correo del aliado/contratista.
     // Si dos aliados distintos atendieron la misma dirección (reasignación),
-    // quedan como 2 tarjetas separadas en vez de pisarse entre sí. Si no hay
-    // dirección (ej. OS de Normalización, que la traen dentro de la
-    // descripción), igual se incluye el correo para no perder esa distinción.
-    var aid = getVal(row, COL.aid) ||
-      (oid+'|'+(dirVal||'')+(emailVal?'|'+emailVal.toLowerCase():(dirVal?'':'|r'+rowIdx)));
+    // quedan como 2 tarjetas separadas en vez de pisarse entre sí. Respaldo
+    // en cascada cuando falta el correo (pasa seguido en OS de Normalización/
+    // AIV/NORM_CODE): usar el nombre del técnico, y si tampoco hay nombre,
+    // el índice de fila — así nunca dos técnicos/aliados distintos en la
+    // misma orden+dirección colisionan en la misma tarjeta por falta de dato.
+    var distintivo = emailVal ? emailVal.toLowerCase() : (opVal ? nrm(opVal) : 'r'+rowIdx);
+    var aid = getVal(row, COL.aid) || (oid+'|'+(dirVal||'')+'|'+distintivo);
     var key = oid+'|'+aid;
     var em  = getVal(row, COL.email);
     var stRaw = getVal(row, COL.status);
