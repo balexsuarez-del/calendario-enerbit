@@ -2735,6 +2735,11 @@ function askAsst(){
   const t = nrm(q);
   const answerEl = document.getElementById('asst-answer');
 
+  // ¿Pregunta por duplicados? Mostrarlos aquí mismo, con opción de limpiar.
+  if(t.includes('duplicad')){
+    answerEl.innerHTML = renderDuplicadosHTML();
+    return;
+  }
   // ¿Pide una gráfica de algún campo?
   if(t.includes('grafic') || t.includes('grafica')){
     const campo = detectarCampoGraficable(t);
@@ -3012,7 +3017,7 @@ function fusionarGrupoDuplicado(grupo){
     if(arr) osIdx[g.fecha] = arr.filter(function(e){ return e!==g.ev; });
   });
 }
-async function fusionarUnGrupoAsst(idx){
+async function fusionarUnGrupoAsst(idx, origen){
   const diag = ejecutarDiagnostico();
   const grupo = diag.duplicadosExactos[idx];
   if(!grupo) return;
@@ -3022,9 +3027,14 @@ async function fusionarUnGrupoAsst(idx){
   saveToLocalStorage();
   await pushFullDatasetToGAS();
   toast('Grupo fusionado ✓','ok');
-  renderAsstDiagnostico();
+  if(origen==='preguntar'){
+    const answerEl=document.getElementById('asst-answer');
+    if(answerEl) answerEl.innerHTML = renderDuplicadosHTML();
+  } else {
+    renderAsstDiagnostico();
+  }
 }
-async function limpiarDuplicadosExactosAsst(){
+async function limpiarDuplicadosExactosAsst(origen){
   const diag = ejecutarDiagnostico();
   if(!diag.duplicadosExactos.length){ toast('No hay duplicados exactos para limpiar','ok'); return; }
   const totalTarjetas = diag.duplicadosExactos.reduce(function(s,g){return s+g.length;},0);
@@ -3037,9 +3047,53 @@ async function limpiarDuplicadosExactosAsst(){
   toast('Limpiando y sincronizando…','ok');
   const ok = await pushFullDatasetToGAS();
   toast(ok?'Duplicados limpiados y sincronizados ✓':'Duplicados limpiados (local; GAS offline)', ok?'ok':'err');
-  renderAsstDiagnostico();
+  if(origen==='preguntar'){
+    const answerEl=document.getElementById('asst-answer');
+    if(answerEl) answerEl.innerHTML = renderDuplicadosHTML();
+  } else {
+    renderAsstDiagnostico();
+  }
 }
 
+// Vista de duplicados reutilizable desde la pestaña "Preguntar"
+function renderDuplicadosHTML(){
+  const diag = ejecutarDiagnostico();
+  const duplicadas = diag.duplicadas, duplicadosExactos = diag.duplicadosExactos;
+  let html = '<div class="asst-answer">Encontré <b>'+duplicadas.length+'</b> posible(s) reasignación y <b>'+duplicadosExactos.length+'</b> grupo(s) de duplicados exactos.</div>';
+
+  html += '<div class="asst-section-title">🔁 Posibles duplicados (distinto aliado — puede ser reasignación real) ('+duplicadas.length+')</div>';
+  if(!duplicadas.length){
+    html += '<div class="asst-empty">Ninguno</div>';
+  } else {
+    duplicadas.slice(0,15).forEach(function(grupo){
+      const primero=grupo[0];
+      const aliados=[...new Set(grupo.map(function(g){return g.ev.al||g.ev.em||'';}))];
+      html += '<div class="asst-finding" onclick="irYResaltarOS(\''+primero.ev.oid+'\',\''+encodeURIComponent(primero.ev.aid)+'\',\''+primero.fecha+'\')">'+
+        '<b>'+grupo.length+' tarjetas</b> — '+(primero.ev.tc||'')+' · '+(primero.ev.ci||'')+
+        '<div style="color:var(--gy);font-size:.74rem">'+(primero.ev.dir||'').slice(0,60)+' — aliados: '+aliados.join(', ')+'</div>'+
+      '</div>';
+    });
+    if(duplicadas.length>15) html += '<div class="asst-empty">…y '+(duplicadas.length-15)+' más — revisa la pestaña Diagnóstico para verlas todas</div>';
+  }
+
+  html += '<div class="asst-section-title">🧹 Duplicados exactos — bug de sincronización, mismo aliado ('+duplicadosExactos.length+')</div>';
+  if(!duplicadosExactos.length){
+    html += '<div class="asst-empty">Ninguno</div>';
+  } else {
+    html += '<div style="margin:8px 0"><button class="btn btn-primary btn-sm" onclick="limpiarDuplicadosExactosAsst(\'preguntar\')">🧹 Limpiar todos los duplicados exactos</button></div>';
+    duplicadosExactos.slice(0,15).forEach(function(grupo, idx){
+      const primero=grupo[0];
+      html += '<div class="asst-finding">'+
+        '<div onclick="irYResaltarOS(\''+primero.ev.oid+'\',\''+encodeURIComponent(primero.ev.aid)+'\',\''+primero.fecha+'\')" style="cursor:pointer">'+
+        '<b>'+grupo.length+' tarjetas</b> — '+(primero.ev.tc||'')+' · '+(primero.ev.ci||'')+
+        '<div style="color:var(--gy);font-size:.74rem">'+(primero.ev.dir||'').slice(0,60)+'</div></div>'+
+        '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();fusionarUnGrupoAsst('+idx+',\'preguntar\')">Fusionar este grupo</button>'+
+      '</div>';
+    });
+    if(duplicadosExactos.length>15) html += '<div class="asst-empty">…y '+(duplicadosExactos.length-15)+' más — usa "Limpiar todos" arriba, o ve a Diagnóstico para verlos todos</div>';
+  }
+  return html;
+}
 function renderAsstDiagnostico(){
   const body=document.getElementById('asst-body');
   const diag = ejecutarDiagnostico();
