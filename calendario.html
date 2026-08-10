@@ -412,12 +412,12 @@ textarea.fi{resize:vertical;min-height:60px}
 <header class="app-header">
   <div class="header-brand">
     <div class="brand-logos">
-      <svg height="24" viewBox="0 0 110 28" xmlns="http://www.w3.org/2000/svg">
+      <svg height="32" viewBox="0 0 110 28" xmlns="http://www.w3.org/2000/svg">
         <text x="0" y="22" font-family="Arial Black,sans-serif" font-size="22" font-weight="900" fill="#FF7900">ener</text>
         <text x="52" y="22" font-family="Arial Black,sans-serif" font-size="22" font-weight="900" fill="#fff">Bit</text>
       </svg>
       <div class="brand-sep"></div>
-      <svg height="20" viewBox="0 0 90 20" xmlns="http://www.w3.org/2000/svg">
+      <svg height="28" viewBox="0 0 90 20" xmlns="http://www.w3.org/2000/svg">
         <rect width="20" height="20" rx="4" fill="#2952E3"/>
         <path d="M5 3L5 17M5 10L15 3M5 10L15 17" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
         <text x="24" y="15" font-family="Arial,sans-serif" font-size="12" font-weight="700" fill="#fff">kantiA</text>
@@ -2203,6 +2203,9 @@ function osCardHTML(ev, key) {
 
   // Clase de tarjeta
   var cardBorder=chg?'border:2px solid #F59E0B!important;background:#FFFBEB!important;box-shadow:0 0 12px rgba(245,158,11,.3)!important':
+                 (ds==='done')?'border-left:5px solid '+ST.done.bar+'!important;background:#ECFDF5!important':
+                 (ds==='reprog')?'border-left:5px solid '+ST.reprog.bar+'!important;background:#FFFBEB!important':
+                 (ds==='cancel')?'border-left:5px solid '+ST.cancel.bar+'!important;background:#FEF2F2!important':
                  emp==='kt'?'border-left:5px solid #2563EB!important;background:#EFF6FF!important':
                  emp==='usr'?'border-left:5px solid #F59E0B!important;background:#FFFBEB!important':
                  emp==='eb'?'border-left:5px solid #7028AE!important':
@@ -2216,9 +2219,9 @@ function osCardHTML(ev, key) {
   // Header empresa
   var empHeader='';
   if(emp==='kt'){
-    empHeader='<div class="kt-header"><svg width="12" height="12" viewBox="0 0 22 22"><rect width="22" height="22" rx="3" fill="white"/><path d="M4 3L4 19M4 11L16 3M4 11L16 19" stroke="#2563EB" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="kt-header-txt">kantiA</span></div>';
+    empHeader='<div class="kt-header"><svg width="18" height="18" viewBox="0 0 22 22"><rect width="22" height="22" rx="3" fill="white"/><path d="M4 3L4 19M4 11L16 3M4 11L16 19" stroke="#2563EB" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="kt-header-txt">kantiA</span></div>';
   } else if(emp==='eb'){
-    empHeader='<div class="eb-header"><svg height="10" viewBox="0 0 110 28"><text x="0" y="22" font-family="Arial Black,sans-serif" font-size="22" font-weight="900" fill="#FF7900">ener</text><text x="52" y="22" font-family="Arial Black,sans-serif" font-size="22" font-weight="900" fill="white">Bit</text></svg></div>';
+    empHeader='<div class="eb-header"><svg height="16" viewBox="0 0 110 28"><text x="0" y="22" font-family="Arial Black,sans-serif" font-size="22" font-weight="900" fill="#FF7900">ener</text><text x="52" y="22" font-family="Arial Black,sans-serif" font-size="22" font-weight="900" fill="white">Bit</text></svg></div>';
   } else if(emp==='usr'){
     empHeader='<div style="background:#F59E0B;padding:3px 10px;margin:-10px -13px 8px -18px;"><span style="font-size:.6rem;font-weight:700;color:#fff">✏ OS Manual</span></div>';
   } else {
