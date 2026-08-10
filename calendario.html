@@ -2939,10 +2939,12 @@ function ejecutarDiagnostico(){
   });
 
   const duplicadas=[];
+  const duplicadosExactos=[];
   Object.values(porDireccion).forEach(function(grupo){
     if(grupo.length>1){
       const correos = [...new Set(grupo.map(function(g){return (g.ev.em||'').toLowerCase();}))];
       if(correos.length>1) duplicadas.push(grupo);
+      else duplicadosExactos.push(grupo);
     }
   });
 
@@ -2957,7 +2959,7 @@ function ejecutarDiagnostico(){
     .sort(function(a,b){ return b.items.length-a.items.length; });
 
   atrasadas.sort(function(a,b){ return b.diasAtraso-a.diasAtraso; });
-  return { atrasadas:atrasadas, duplicadas:duplicadas, sobrecarga:sobrecarga, patrones:patrones };
+  return { atrasadas:atrasadas, duplicadas:duplicadas, duplicadosExactos:duplicadosExactos, sobrecarga:sobrecarga, patrones:patrones };
 }
 
 // ── Notas listas para copiar (WhatsApp/correo al aliado) ──
@@ -2991,10 +2993,57 @@ async function copiarNotaAsst(btn, texto){
 }
 
 
+// ── Limpieza de duplicados exactos (bug de clave: misma orden+dirección+correo, varias tarjetas) ──
+function elegirMejorEv(grupo){
+  const prioridad = {done:4, cancel:3, reprog:2, pending:1};
+  return grupo.slice().sort(function(a,b){
+    var pa = prioridad[calcStatus(a.ev)]||0, pb = prioridad[calcStatus(b.ev)]||0;
+    if(pa!==pb) return pb-pa;
+    var camposA = Object.values(a.ev).filter(Boolean).length;
+    var camposB = Object.values(b.ev).filter(Boolean).length;
+    return camposB-camposA;
+  })[0];
+}
+function fusionarGrupoDuplicado(grupo){
+  const mejor = elegirMejorEv(grupo);
+  grupo.forEach(function(g){
+    if(g.ev===mejor.ev) return;
+    var arr = osIdx[g.fecha];
+    if(arr) osIdx[g.fecha] = arr.filter(function(e){ return e!==g.ev; });
+  });
+}
+async function fusionarUnGrupoAsst(idx){
+  const diag = ejecutarDiagnostico();
+  const grupo = diag.duplicadosExactos[idx];
+  if(!grupo) return;
+  fusionarGrupoDuplicado(grupo);
+  applyFilters();
+  if(selDate) renderPaneContent();
+  saveToLocalStorage();
+  await pushFullDatasetToGAS();
+  toast('Grupo fusionado ✓','ok');
+  renderAsstDiagnostico();
+}
+async function limpiarDuplicadosExactosAsst(){
+  const diag = ejecutarDiagnostico();
+  if(!diag.duplicadosExactos.length){ toast('No hay duplicados exactos para limpiar','ok'); return; }
+  const totalTarjetas = diag.duplicadosExactos.reduce(function(s,g){return s+g.length;},0);
+  const totalGrupos = diag.duplicadosExactos.length;
+  if(!confirm('Se encontraron '+totalGrupos+' grupos con '+totalTarjetas+' tarjetas en total. Se va a conservar 1 tarjeta por grupo (la de estado más avanzado: ejecutada > cancelada > reprogramada > pendiente) y borrar las otras '+(totalTarjetas-totalGrupos)+'. Esto afecta a todos los colaboradores y no se puede deshacer. ¿Continuar?')) return;
+  diag.duplicadosExactos.forEach(function(grupo){ fusionarGrupoDuplicado(grupo); });
+  applyFilters();
+  if(selDate) renderPaneContent();
+  saveToLocalStorage();
+  toast('Limpiando y sincronizando…','ok');
+  const ok = await pushFullDatasetToGAS();
+  toast(ok?'Duplicados limpiados y sincronizados ✓':'Duplicados limpiados (local; GAS offline)', ok?'ok':'err');
+  renderAsstDiagnostico();
+}
+
 function renderAsstDiagnostico(){
   const body=document.getElementById('asst-body');
   const diag = ejecutarDiagnostico();
-  const atrasadas=diag.atrasadas, duplicadas=diag.duplicadas, sobrecarga=diag.sobrecarga, patrones=diag.patrones;
+  const atrasadas=diag.atrasadas, duplicadas=diag.duplicadas, duplicadosExactos=diag.duplicadosExactos, sobrecarga=diag.sobrecarga, patrones=diag.patrones;
   let html='';
 
   html += '<div class="asst-section-title">⏳ OS pendientes atrasadas ('+atrasadas.length+')</div>';
@@ -3030,6 +3079,24 @@ function renderAsstDiagnostico(){
       '</div>';
     });
     if(duplicadas.length>20) html += '<div class="asst-empty">…y '+(duplicadas.length-20)+' más</div>';
+  }
+
+  html += '<div class="asst-section-title">🧹 Duplicados exactos — bug de sincronización, mismo aliado ('+duplicadosExactos.length+')</div>';
+  if(!duplicadosExactos.length){
+    html += '<div class="asst-empty">No encontré duplicados exactos</div>';
+  } else {
+    html += '<div class="asst-empty" style="text-align:left">Misma orden+dirección+aliado con varias tarjetas — no es una reasignación real, es acumulación por cambios técnicos. Se puede limpiar de forma segura (conserva la de estado más avanzado).</div>';
+    html += '<div style="margin:8px 0"><button class="btn btn-primary btn-sm" onclick="limpiarDuplicadosExactosAsst()">🧹 Limpiar todos los duplicados exactos</button></div>';
+    duplicadosExactos.slice(0,15).forEach(function(grupo, idx){
+      const primero=grupo[0];
+      html += '<div class="asst-finding">'+
+        '<div onclick="irYResaltarOS(\''+primero.ev.oid+'\',\''+encodeURIComponent(primero.ev.aid)+'\',\''+primero.fecha+'\')" style="cursor:pointer">'+
+        '<b>'+grupo.length+' tarjetas</b> — '+(primero.ev.tc||'')+' · '+(primero.ev.ci||'')+
+        '<div style="color:var(--gy);font-size:.74rem">'+(primero.ev.dir||'').slice(0,60)+'</div></div>'+
+        '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();fusionarUnGrupoAsst('+idx+')">Fusionar este grupo</button>'+
+      '</div>';
+    });
+    if(duplicadosExactos.length>15) html += '<div class="asst-empty">…y '+(duplicadosExactos.length-15)+' más — usa "Limpiar todos"</div>';
   }
 
   html += '<div class="asst-section-title">👷 Técnico/cuadrilla con posible sobrecarga ('+sobrecarga.length+')</div>';
