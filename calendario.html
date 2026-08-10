@@ -685,7 +685,7 @@ textarea.fi{resize:vertical;min-height:60px}
 </div>
 
 <!-- ASISTENTE FLOTANTE -->
-<button class="asst-btn" id="asst-btn" onclick="toggleAsistente(event)">🤖</button>
+<button class="asst-btn" id="asst-btn" onclick="toggleAsistente(event)">🤖<span id="asst-badge" style="display:none;position:absolute;top:-4px;right:-4px;background:#DC2626;color:#fff;border-radius:50%;width:20px;height:20px;font-size:.68rem;align-items:center;justify-content:center;font-weight:700"></span></button>
 <div class="asst-panel" id="asst-panel">
   <div class="asst-hdr">
     <span>🤖 Asistente del calendario</span>
@@ -1407,6 +1407,7 @@ function inicializarCalendario() {
   applyFilters();
   setSyncUI('ok', flat.length + ' OS cargadas');
   startSync();
+  actualizarBadgeAsistente();
 }
 
 function saveToLocalStorage() {
@@ -1430,6 +1431,7 @@ function saveToLocalStorage() {
     console.warn('No se pudo guardar el dataset completo en localStorage:', e);
     toast('⚠️ Demasiadas OS para guardar en este navegador — al recargar la página se perderán. Sincroniza con Google Sheets o carga menos días a la vez.', 'err');
   }
+  actualizarBadgeAsistente();
 }
 
 async function loadFromGAS() {
@@ -1636,12 +1638,13 @@ function processExcelRows(rows, nombre) {
   });
 
   depColorMap={}; depColorIdx=0;
-  var ok=0, skip=0;
+  var ok=0, skip=0, maxFechaArchivo='';
 
   rows.forEach(function(row, rowIdx){
     var rawF = getVal(row, COL.fecha);
     var fecha = parseFecha(rawF);
     if(!fecha){ skip++; return; }
+    if(fecha > maxFechaArchivo) maxFechaArchivo = fecha;
 
     var oid = getVal(row, COL.oid);
     if(!oid){ skip++; return; }
@@ -1727,6 +1730,19 @@ function processExcelRows(rows, nombre) {
   setSyncUI('ok', ok+' OS · '+nombre);
   toast(ok+' ordenes cargadas'+(skip?' ('+skip+' sin fecha)':''), 'ok');
   startSync();
+
+  // Aviso: si el archivo trae fechas muy recientes y viene de Snowflake, puede
+  // estar incompleto (retraso de sincronización ya detectado antes).
+  if(maxFechaArchivo){
+    var hoyKey = dateKey(new Date());
+    var diasDesdeMax = Math.round((new Date(hoyKey) - new Date(maxFechaArchivo)) / 86400000);
+    if(diasDesdeMax <= 3){
+      setTimeout(function(){
+        toast('⚠️ Este archivo incluye fechas muy recientes ('+maxFechaArchivo+'). Si viene de Snowflake, puede estar incompleto para los últimos días — el export directo del sistema es más confiable para fechas tan recientes.', 'err');
+      }, 4000);
+    }
+  }
+
   // Compartir con todos: subir el dataset completo a Google Sheets
   setSyncUI('busy','Subiendo a Google Sheets...');
   pushFullDatasetToGAS().then(function(success){
@@ -2577,6 +2593,21 @@ function toast(msg,type=''){
 let asstTab = 'preguntar';
 let asstDragged = false;
 
+function actualizarBadgeAsistente(){
+  const badge = document.getElementById('asst-badge');
+  if(!badge) return;
+  try {
+    const diag = ejecutarDiagnostico();
+    const n = diag.atrasadas.length;
+    if(n>0){
+      badge.textContent = n>99?'99+':n;
+      badge.style.display='flex';
+    } else {
+      badge.style.display='none';
+    }
+  } catch(e) { /* silencioso si aun no hay datos */ }
+}
+
 function configurarArrastreBoton() {
   const btn = document.getElementById('asst-btn');
   if(!btn) return;
@@ -2688,8 +2719,24 @@ function renderAsstPreguntar(){
 function askAsst(){
   const q = document.getElementById('asst-q')?.value||'';
   if(!q.trim()) return;
-  const res = interpretarPregunta(q);
+  const t = nrm(q);
   const answerEl = document.getElementById('asst-answer');
+
+  // ¿Pide una gráfica de algún campo?
+  if(t.includes('grafic') || t.includes('grafica')){
+    const campo = detectarCampoGraficable(t);
+    if(campo){
+      answerEl.innerHTML = graficarCampoHTML(campo.key, campo.label);
+      return;
+    }
+  }
+  // ¿Pide comparar esta semana vs. la pasada?
+  if((t.includes('compar')||t.includes('vs')) && (t.includes('semana'))){
+    answerEl.innerHTML = compararSemanasHTML();
+    return;
+  }
+
+  const res = interpretarPregunta(q);
   let html = '<div class="asst-answer">'+res.respuesta+'</div>';
   if(res.matches && res.matches.length){
     html += '<div class="asst-section-title">Resultados ('+res.matches.length+')</div>';
@@ -2697,6 +2744,77 @@ function askAsst(){
     if(res.matches.length>30) html += '<div class="asst-empty">…y '+(res.matches.length-30)+' más</div>';
   }
   answerEl.innerHTML = html;
+}
+
+// ── Graficar cualquier campo al vuelo (barras simples HTML/CSS, sin librerías) ──
+function detectarCampoGraficable(t){
+  const campos = [
+    {key:'ci', label:'ciudad', sinonimos:['ciudad','ciudades']},
+    {key:'sta', label:'departamento', sinonimos:['departamento','depto']},
+    {key:'al', label:'aliado', sinonimos:['aliado','contratista']},
+    {key:'tc', label:'tipo de OS', sinonimos:['tipo']},
+    {key:'estado', label:'estado', sinonimos:['estado']},
+  ];
+  return campos.find(function(c){ return c.sinonimos.some(function(s){ return t.includes(s); }); }) || null;
+}
+
+function graficarCampoHTML(campoKey, label){
+  const conteo = {};
+  Object.values(osIdx).flat().forEach(function(ev){
+    const val = campoKey==='estado' ? (ST[calcStatus(ev)]||ST.pending).label : (ev[campoKey]||'(sin dato)');
+    conteo[val] = (conteo[val]||0)+1;
+  });
+  const entries = Object.entries(conteo).sort(function(a,b){ return b[1]-a[1]; }).slice(0,12);
+  if(!entries.length) return '<div class="asst-empty">No hay datos para graficar por '+label+'</div>';
+  const max = entries[0][1];
+  let html = '<div class="asst-answer">OS por '+label+' (top '+entries.length+')</div>';
+  entries.forEach(function(e){
+    const pct = Math.round((e[1]/max)*100);
+    html += '<div style="margin-bottom:6px">'+
+      '<div style="display:flex;justify-content:space-between;font-size:.76rem"><span>'+e[0]+'</span><b>'+e[1]+'</b></div>'+
+      '<div style="background:#F3F4F6;border-radius:4px;height:10px;overflow:hidden"><div style="background:var(--pp);height:100%;width:'+pct+'%"></div></div>'+
+    '</div>';
+  });
+  return html;
+}
+
+// ── Comparar esta semana vs. la semana pasada ──
+function compararSemanasHTML(){
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const dow = hoy.getDay();
+  const inicioEsta = new Date(hoy); inicioEsta.setDate(hoy.getDate()-dow);
+  const finEsta = new Date(inicioEsta); finEsta.setDate(inicioEsta.getDate()+6);
+  const inicioPasada = new Date(inicioEsta); inicioPasada.setDate(inicioEsta.getDate()-7);
+  const finPasada = new Date(inicioPasada); finPasada.setDate(inicioPasada.getDate()+6);
+
+  function contarEnRango(desde, hasta){
+    const c = {done:0, cancel:0, reprog:0, pending:0, total:0};
+    Object.entries(osIdx).forEach(function(entry){
+      const p=entry[0].split('-').map(Number);
+      const fd=new Date(p[0],p[1]-1,p[2]);
+      if(fd>=desde && fd<=hasta){
+        entry[1].forEach(function(ev){ c[calcStatus(ev)]++; c.total++; });
+      }
+    });
+    return c;
+  }
+  const esta = contarEnRango(inicioEsta, finEsta);
+  const pasada = contarEnRango(inicioPasada, finPasada);
+
+  function delta(a,b){
+    const d=a-b;
+    if(d===0) return '<span style="color:var(--gy)">= igual</span>';
+    return d>0 ? '<span style="color:#065F46">▲ +'+d+'</span>' : '<span style="color:#991B1B">▼ '+d+'</span>';
+  }
+
+  return '<div class="asst-answer">'+
+    '<b>Esta semana</b> ('+dateKey(inicioEsta)+' a '+dateKey(finEsta)+') vs <b>semana pasada</b> ('+dateKey(inicioPasada)+' a '+dateKey(finPasada)+')<br><br>'+
+    'Total: '+esta.total+' '+delta(esta.total,pasada.total)+'<br>'+
+    'Ejecutadas: '+esta.done+' '+delta(esta.done,pasada.done)+'<br>'+
+    'Canceladas: '+esta.cancel+' '+delta(esta.cancel,pasada.cancel)+'<br>'+
+    'Reprogramadas: '+esta.reprog+' '+delta(esta.reprog,pasada.reprog)+'<br>'+
+    'Pendientes: '+esta.pending+' '+delta(esta.pending,pasada.pending)+
+  '</div>';
 }
 
 function interpretarPregunta(texto){
@@ -2771,7 +2889,7 @@ function interpretarPregunta(texto){
 // ── DIAGNÓSTICO (reglas: atrasadas + posibles duplicados) ──
 function ejecutarDiagnostico(){
   const hoy = new Date(); hoy.setHours(0,0,0,0);
-  const atrasadas=[]; const porDireccion={};
+  const atrasadas=[]; const porDireccion={}; const porTecnicoDia={}; const porAliadoTipo={};
 
   Object.entries(osIdx).forEach(function(entry){
     const fecha=entry[0];
@@ -2788,6 +2906,22 @@ function ejecutarDiagnostico(){
         if(!porDireccion[key]) porDireccion[key]=[];
         porDireccion[key].push({ev:ev, fecha:fecha});
       }
+      // Sobrecarga de técnico/cuadrilla por día
+      const tecnico = ev.tec||ev.op||'';
+      if(tecnico){
+        const keyT = fecha+'|'+nrm(tecnico);
+        if(!porTecnicoDia[keyT]) porTecnicoDia[keyT]={tecnico:tecnico, fecha:fecha, items:[]};
+        porTecnicoDia[keyT].items.push(ev);
+      }
+      // Patrones repetidos: mismo aliado + mismo tipo, cancelada
+      if(st==='cancel'){
+        const aliado = ev.al||ev.em||'';
+        if(aliado){
+          const keyA = nrm(aliado)+'|'+nrm(ev.tc||'');
+          if(!porAliadoTipo[keyA]) porAliadoTipo[keyA]={aliado:aliado, tipo:ev.tc||'', items:[]};
+          porAliadoTipo[keyA].items.push({ev:ev, fecha:fecha});
+        }
+      }
     });
   });
 
@@ -2799,14 +2933,55 @@ function ejecutarDiagnostico(){
     }
   });
 
+  const UMBRAL_SOBRECARGA = 8;
+  const sobrecarga = Object.values(porTecnicoDia)
+    .filter(function(g){ return g.items.length > UMBRAL_SOBRECARGA; })
+    .sort(function(a,b){ return b.items.length-a.items.length; });
+
+  const UMBRAL_PATRON = 3;
+  const patrones = Object.values(porAliadoTipo)
+    .filter(function(g){ return g.items.length >= UMBRAL_PATRON; })
+    .sort(function(a,b){ return b.items.length-a.items.length; });
+
   atrasadas.sort(function(a,b){ return b.diasAtraso-a.diasAtraso; });
-  return { atrasadas: atrasadas, duplicadas: duplicadas };
+  return { atrasadas:atrasadas, duplicadas:duplicadas, sobrecarga:sobrecarga, patrones:patrones };
 }
+
+// ── Notas listas para copiar (WhatsApp/correo al aliado) ──
+function notaAtrasada(ev, fecha, dias){
+  return 'Hola, la OS "'+(ev.tc||'')+'" en '+(ev.dir||ev.ci||'sin dirección')+', '+(ev.ci||'')+
+    ', lleva '+dias+' día(s) atrasada (estaba programada para '+fecha+'). ¿Puedes darle prioridad? '+
+    'Orden: '+ev.oid;
+}
+function notaDuplicado(grupo){
+  const primero=grupo[0].ev;
+  const aliados=[...new Set(grupo.map(function(g){return g.ev.al||g.ev.em||'';}))];
+  return 'Hola, encontré '+grupo.length+' registros para la misma orden y dirección ('+
+    (primero.dir||primero.ci||'')+') con aliados distintos: '+aliados.join(' y ')+
+    '. ¿Puedes confirmar cuál es la asignación correcta? Orden: '+primero.oid;
+}
+function notaSobrecarga(g){
+  return 'Hola, el '+g.fecha+' tienes '+g.items.length+' OS asignadas ('+g.tecnico+
+    '). Si necesitas apoyo o reprogramar algunas, avísame para coordinar.';
+}
+function notaPatron(g){
+  return 'Hola, revisando el histórico, "'+g.aliado+'" tiene '+g.items.length+
+    ' OS canceladas de tipo "'+g.tipo+'". ¿Podemos revisar juntos qué está pasando ahí?';
+}
+async function copiarNotaAsst(btn, texto){
+  try {
+    await navigator.clipboard.writeText(texto);
+    toast('Nota copiada al portapapeles ✓','ok');
+  } catch(e) {
+    toast('No se pudo copiar automáticamente','err');
+  }
+}
+
 
 function renderAsstDiagnostico(){
   const body=document.getElementById('asst-body');
   const diag = ejecutarDiagnostico();
-  const atrasadas=diag.atrasadas, duplicadas=diag.duplicadas;
+  const atrasadas=diag.atrasadas, duplicadas=diag.duplicadas, sobrecarga=diag.sobrecarga, patrones=diag.patrones;
   let html='';
 
   html += '<div class="asst-section-title">⏳ OS pendientes atrasadas ('+atrasadas.length+')</div>';
@@ -2815,9 +2990,12 @@ function renderAsstDiagnostico(){
   } else {
     atrasadas.slice(0,25).forEach(function(a){
       const sev = a.diasAtraso>7?'alta':a.diasAtraso>=3?'media':'baja';
-      html += '<div class="asst-finding" onclick="irYResaltarOS(\''+a.ev.oid+'\',\''+encodeURIComponent(a.ev.aid)+'\',\''+a.fecha+'\')">'+
-        '<div><span class="sev-'+sev+'">'+a.diasAtraso+' días</span> — '+(a.ev.tc||'')+' · '+(a.ev.ci||'')+'</div>'+
-        '<div style="color:var(--gy);font-size:.74rem">'+(a.ev.dir||'').slice(0,70)+'</div>'+
+      const nota = notaAtrasada(a.ev, a.fecha, a.diasAtraso).replace(/'/g,"\\'");
+      html += '<div class="asst-finding">'+
+        '<div onclick="irYResaltarOS(\''+a.ev.oid+'\',\''+encodeURIComponent(a.ev.aid)+'\',\''+a.fecha+'\')" style="cursor:pointer">'+
+        '<span class="sev-'+sev+'">'+a.diasAtraso+' días</span> — '+(a.ev.tc||'')+' · '+(a.ev.ci||'')+
+        '<div style="color:var(--gy);font-size:.74rem">'+(a.ev.dir||'').slice(0,70)+'</div></div>'+
+        '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();copiarNotaAsst(this,\''+nota+'\')">📋 Copiar nota para el aliado</button>'+
       '</div>';
     });
     if(atrasadas.length>25) html += '<div class="asst-empty">…y '+(atrasadas.length-25)+' más</div>';
@@ -2830,12 +3008,45 @@ function renderAsstDiagnostico(){
     duplicadas.slice(0,20).forEach(function(grupo){
       const primero=grupo[0];
       const aliados=[...new Set(grupo.map(function(g){return g.ev.al||g.ev.em||'';}))];
-      html += '<div class="asst-finding" onclick="irYResaltarOS(\''+primero.ev.oid+'\',\''+encodeURIComponent(primero.ev.aid)+'\',\''+primero.fecha+'\')">'+
-        '<div><b>'+grupo.length+' tarjetas</b> — '+(primero.ev.tc||'')+' · '+(primero.ev.ci||'')+'</div>'+
-        '<div style="color:var(--gy);font-size:.74rem">'+(primero.ev.dir||'').slice(0,60)+' — aliados: '+aliados.join(', ')+'</div>'+
+      const nota = notaDuplicado(grupo).replace(/'/g,"\\'");
+      html += '<div class="asst-finding">'+
+        '<div onclick="irYResaltarOS(\''+primero.ev.oid+'\',\''+encodeURIComponent(primero.ev.aid)+'\',\''+primero.fecha+'\')" style="cursor:pointer">'+
+        '<b>'+grupo.length+' tarjetas</b> — '+(primero.ev.tc||'')+' · '+(primero.ev.ci||'')+
+        '<div style="color:var(--gy);font-size:.74rem">'+(primero.ev.dir||'').slice(0,60)+' — aliados: '+aliados.join(', ')+'</div></div>'+
+        '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();copiarNotaAsst(this,\''+nota+'\')">📋 Copiar nota</button>'+
       '</div>';
     });
     if(duplicadas.length>20) html += '<div class="asst-empty">…y '+(duplicadas.length-20)+' más</div>';
+  }
+
+  html += '<div class="asst-section-title">👷 Técnico/cuadrilla con posible sobrecarga ('+sobrecarga.length+')</div>';
+  if(!sobrecarga.length){
+    html += '<div class="asst-empty">Ninguna sobrecarga detectada (más de 8 OS el mismo día)</div>';
+  } else {
+    sobrecarga.slice(0,15).forEach(function(g){
+      const nota = notaSobrecarga(g).replace(/'/g,"\\'");
+      html += '<div class="asst-finding">'+
+        '<div onclick="irYResaltarOS(\''+g.items[0].oid+'\',\''+encodeURIComponent(g.items[0].aid)+'\',\''+g.fecha+'\')" style="cursor:pointer">'+
+        '<span class="sev-alta">'+g.items.length+' OS</span> — '+g.tecnico+' · '+g.fecha+'</div>'+
+        '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();copiarNotaAsst(this,\''+nota+'\')">📋 Copiar nota</button>'+
+      '</div>';
+    });
+    if(sobrecarga.length>15) html += '<div class="asst-empty">…y '+(sobrecarga.length-15)+' más</div>';
+  }
+
+  html += '<div class="asst-section-title">📉 Patrones repetidos de cancelación ('+patrones.length+')</div>';
+  if(!patrones.length){
+    html += '<div class="asst-empty">Sin patrones repetidos (3+ canceladas del mismo aliado y tipo)</div>';
+  } else {
+    patrones.slice(0,15).forEach(function(g){
+      const nota = notaPatron(g).replace(/'/g,"\\'");
+      html += '<div class="asst-finding">'+
+        '<div onclick="irYResaltarOS(\''+g.items[0].ev.oid+'\',\''+encodeURIComponent(g.items[0].ev.aid)+'\',\''+g.items[0].fecha+'\')" style="cursor:pointer">'+
+        '<span class="sev-media">'+g.items.length+' canceladas</span> — '+g.aliado+' · '+g.tipo+'</div>'+
+        '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();copiarNotaAsst(this,\''+nota+'\')">📋 Copiar nota</button>'+
+      '</div>';
+    });
+    if(patrones.length>15) html += '<div class="asst-empty">…y '+(patrones.length-15)+' más</div>';
   }
 
   body.innerHTML = html;
@@ -3161,7 +3372,18 @@ function renderAsstConfig(){
     '<div class="asst-match-row"><span>Mes</span>'+
       '<input type="month" id="asst-del-mes" style="flex:1">'+
       '<button class="btn btn-sm" onclick="borrarRangoAsst(\'mes\')">Borrar mes</button></div>'+
-    '<div id="asst-del-result"></div>';
+    '<div id="asst-del-result"></div>'+
+    '<div class="asst-section-title" style="margin-top:18px">⭐ Vistas favoritas</div>'+
+    '<div class="asst-empty" style="text-align:left;margin-bottom:10px">'+
+      'Guarda la combinación de filtros que tengas activa ahora mismo '+
+      '(depto, ciudad, tipo, aliado, estado, material, técnico) con un '+
+      'nombre, para aplicarla luego con un clic.'+
+    '</div>'+
+    '<div class="asst-match-row"><span>Nombre</span>'+
+      '<input type="text" id="asst-vista-nombre" placeholder="Ej: Bogotá pendientes" style="flex:1">'+
+      '<button class="btn btn-sm" onclick="guardarVistaActual()">Guardar vista actual</button></div>'+
+    '<div id="asst-vistas-list"></div>';
+  renderListaVistas();
   // Precargar el correo ya configurado, si existe
   gasGet({action:'getArchiveEmail'}).then(function(d){
     if(d && d.ok && d.email){
@@ -3222,6 +3444,74 @@ async function borrarRangoAsst(tipo){
   const ok = await pushFullDatasetToGAS();
   if(resEl) resEl.innerHTML = '<div class="asst-answer">'+(ok?'✅ ':'⚠️ ')+total+' OS borradas ('+etiqueta+')'+(ok?' y sincronizadas con todos.':' — guardadas localmente, GAS offline.')+'</div>';
   toast(total+' OS borradas','ok');
+}
+
+// ── VISTAS FAVORITAS (combinaciones de filtros guardadas) ──
+function getVistas(){
+  try { return JSON.parse(localStorage.getItem('cal_vistas')||'{}'); } catch(e){ return {}; }
+}
+function setVistas(v){
+  try { localStorage.setItem('cal_vistas', JSON.stringify(v)); } catch(e){}
+}
+function guardarVistaActual(){
+  const nombre = document.getElementById('asst-vista-nombre')?.value.trim();
+  if(!nombre){ toast('Escribe un nombre para la vista','err'); return; }
+  const vista = {
+    dep: [...msData.dep.sel], cit: [...msData.cit.sel], typ: [...msData.typ.sel],
+    al: document.getElementById('f-al')?.value||'',
+    sta: document.getElementById('f-sta')?.value||'',
+    mat: document.getElementById('f-mat')?.value||'',
+    tec: document.getElementById('f-tec')?.value||''
+  };
+  const vistas = getVistas();
+  vistas[nombre] = vista;
+  setVistas(vistas);
+  toast('Vista "'+nombre+'" guardada ✓','ok');
+  renderListaVistas();
+}
+function sincronizarCheckboxesMS(key){
+  document.querySelectorAll('#'+key+'-list .ms-item').forEach(function(item){
+    var cb = item.querySelector('input');
+    if(cb) cb.checked = msData[key].sel.has(item.dataset.val);
+  });
+  updateMSBtn(key);
+}
+function aplicarVista(nombre){
+  const vistas = getVistas();
+  const v = vistas[nombre];
+  if(!v) return;
+  msData.dep.sel = new Set(v.dep||[]);
+  msData.cit.sel = new Set(v.cit||[]);
+  msData.typ.sel = new Set(v.typ||[]);
+  sincronizarCheckboxesMS('dep');
+  sincronizarCheckboxesMS('cit');
+  sincronizarCheckboxesMS('typ');
+  var elAl=document.getElementById('f-al'); if(elAl) elAl.value=v.al||'';
+  var elSta=document.getElementById('f-sta'); if(elSta) elSta.value=v.sta||'';
+  var elMat=document.getElementById('f-mat'); if(elMat) elMat.value=v.mat||'';
+  var elTec=document.getElementById('f-tec'); if(elTec) elTec.value=v.tec||'';
+  applyFilters();
+  toggleAsistente();
+  toast('Vista "'+nombre+'" aplicada','ok');
+}
+function borrarVista(nombre){
+  if(!confirm('¿Borrar la vista "'+nombre+'"?')) return;
+  const vistas = getVistas();
+  delete vistas[nombre];
+  setVistas(vistas);
+  renderListaVistas();
+}
+function renderListaVistas(){
+  const cont = document.getElementById('asst-vistas-list');
+  if(!cont) return;
+  const vistas = getVistas();
+  const nombres = Object.keys(vistas);
+  if(!nombres.length){ cont.innerHTML = '<div class="asst-empty">No tienes vistas guardadas todavía</div>'; return; }
+  cont.innerHTML = nombres.map(function(n){
+    return '<div class="asst-match-row"><span>⭐ '+n+'</span>'+
+      '<button class="btn btn-sm" onclick="aplicarVista(\''+n.replace(/'/g,"\\'")+'\')">Aplicar</button>'+
+      '<button class="btn btn-sm btn-ghost" onclick="borrarVista(\''+n.replace(/'/g,"\\'")+'\')">✕</button></div>';
+  }).join('');
 }
 
 async function guardarCorreoArchivado(){
