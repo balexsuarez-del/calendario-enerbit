@@ -692,6 +692,7 @@ textarea.fi{resize:vertical;min-height:60px}
     <div class="panel-body" style="padding:0">
       <div style="padding:8px 16px;display:flex;gap:16px;align-items:center;font-size:.78rem;background:var(--card);border-bottom:1px solid var(--bd)">
         <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#DC2626;display:inline-block"></span> Activo</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#F59E0B;display:inline-block"></span> Pendiente (mañana)</span>
         <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#059669;display:inline-block"></span> Resuelto</span>
         <span id="cortes-contador" style="color:var(--gm);margin-left:auto"></span>
       </div>
@@ -1174,8 +1175,9 @@ async function cargarDatosCortes(manual) {
     llenarFiltrosCortes();
     pintarCortes('', '');
     var activos = cortesEventos.filter(e => (e.estado||'activo')==='activo').length;
-    var resueltos = cortesEventos.length - activos;
-    document.getElementById('cortes-contador').textContent = activos + ' activos · ' + resueltos + ' resueltos';
+    var pendientes = cortesEventos.filter(e => e.estado==='pendiente').length;
+    var resueltos = cortesEventos.filter(e => e.estado==='resuelto').length;
+    document.getElementById('cortes-contador').textContent = activos + ' activos · ' + pendientes + ' pendientes · ' + resueltos + ' resueltos';
     var badge = document.getElementById('cortes-badge');
     if(activos > 0){ badge.style.display='inline-flex'; badge.textContent = activos; }
     else badge.style.display = 'none';
@@ -1200,15 +1202,16 @@ function pintarCortes(filtroOp, filtroCirc) {
   cortesEventos.forEach(e => {
     if(filtroOp && e.operador !== filtroOp) return;
     if(filtroCirc && e.circuito !== filtroCirc) return;
-    var esActivo = (e.estado || 'activo') === 'activo';
-    var color = esActivo ? '#DC2626' : '#059669';
+    var estado = e.estado || 'activo';
+    var color = estado === 'resuelto' ? '#059669' : (estado === 'pendiente' ? '#F59E0B' : '#DC2626');
+    var etiquetaEstado = estado === 'resuelto' ? 'RESUELTO' : (estado === 'pendiente' ? 'PENDIENTE' : 'ACTIVO');
     var hoyStr = new Date().toISOString().slice(0,10);
     var mananaStr = new Date(Date.now() + 86400000).toISOString().slice(0,10);
     var fechaEv = (e.fecha_evento || '').slice(0,10);
     var etiquetaFecha = fechaEv === hoyStr ? 'HOY' : (fechaEv === mananaStr ? 'MAÑANA' : fechaEv);
     var m = L.circleMarker([e.lat, e.lng], {radius:11, fillColor:color, color:'#fff', weight:2, fillOpacity:0.8}).addTo(cortesMap);
     m.bindPopup(
-      '<span style="display:inline-block;padding:1px 8px;border-radius:8px;font-size:11px;font-weight:700;color:#fff;background:'+color+'">'+(esActivo?'ACTIVO':'RESUELTO')+'</span> '+
+      '<span style="display:inline-block;padding:1px 8px;border-radius:8px;font-size:11px;font-weight:700;color:#fff;background:'+color+'">'+etiquetaEstado+'</span> '+
       '<span style="display:inline-block;padding:1px 8px;border-radius:8px;font-size:11px;font-weight:700;color:#fff;background:#7028AE;margin-left:4px">'+etiquetaFecha+'</span><br>'+
       '<b>'+e.operador+'</b> — '+e.ciudad+'<br>'+
       'Subestación: '+(e.subestacion||'N/D')+'<br>'+
