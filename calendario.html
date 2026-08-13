@@ -1202,9 +1202,14 @@ function pintarCortes(filtroOp, filtroCirc) {
     if(filtroCirc && e.circuito !== filtroCirc) return;
     var esActivo = (e.estado || 'activo') === 'activo';
     var color = esActivo ? '#DC2626' : '#059669';
+    var hoyStr = new Date().toISOString().slice(0,10);
+    var mananaStr = new Date(Date.now() + 86400000).toISOString().slice(0,10);
+    var fechaEv = (e.fecha_evento || '').slice(0,10);
+    var etiquetaFecha = fechaEv === hoyStr ? 'HOY' : (fechaEv === mananaStr ? 'MAÑANA' : fechaEv);
     var m = L.circleMarker([e.lat, e.lng], {radius:11, fillColor:color, color:'#fff', weight:2, fillOpacity:0.8}).addTo(cortesMap);
     m.bindPopup(
       '<span style="display:inline-block;padding:1px 8px;border-radius:8px;font-size:11px;font-weight:700;color:#fff;background:'+color+'">'+(esActivo?'ACTIVO':'RESUELTO')+'</span> '+
+      '<span style="display:inline-block;padding:1px 8px;border-radius:8px;font-size:11px;font-weight:700;color:#fff;background:#7028AE;margin-left:4px">'+etiquetaFecha+'</span><br>'+
       '<b>'+e.operador+'</b> — '+e.ciudad+'<br>'+
       'Subestación: '+(e.subestacion||'N/D')+'<br>'+
       'Circuito: '+(e.circuito||'N/D')+'<br>'+
