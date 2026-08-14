@@ -715,6 +715,7 @@ textarea.fi{resize:vertical;min-height:60px}
           <input type="file" id="cortesFileInput" accept=".csv,.xlsx,.xls" onchange="procesarArchivoCortes(event)">
         </div>
         <button class="btn btn-ghost btn-sm" onclick="cargarDatosCortes(true)">↻ Refrescar</button>
+        <a class="btn btn-ghost btn-sm" id="cortes-reporte-link" href="#" target="_blank" style="text-decoration:none;display:none">📄 Descargar reporte</a>
       </div>
       <div style="display:flex">
         <div id="cortes-map" style="height:60vh;flex:1"></div>
@@ -1148,6 +1149,23 @@ async function gasPost(data) {
 var cortesMap = null, cortesMarkers = [], cortesEventos = [], cortesAddrMarker = null;
 var COLORES_OP = {'Enel/Codensa':'#FF7900','Afinia':'#7028AE','Air-e':'#2563EB','EPM':'#059669','Celsia':'#DC2626'};
 
+async function cargarUltimoReporte() {
+  try {
+    var resp = await fetch('https://api.github.com/repos/balexsuarez-del/calendario-enerbit/contents/reportes');
+    if (!resp.ok) return;
+    var archivos = await resp.json();
+    if (!Array.isArray(archivos) || archivos.length === 0) return;
+    archivos.sort((a, b) => b.name.localeCompare(a.name)); // mas reciente primero (nombres con fecha YYYY-MM-DD)
+    var ultimo = archivos[0];
+    var link = document.getElementById('cortes-reporte-link');
+    link.href = ultimo.download_url;
+    link.textContent = '📄 ' + ultimo.name;
+    link.style.display = 'inline-block';
+  } catch (e) {
+    console.log('No se pudo cargar el ultimo reporte:', e);
+  }
+}
+
 function toggleCortesOverlay() {
   var ov = document.getElementById('cortes-overlay');
   var abrir = ov.style.display === 'none';
@@ -1155,6 +1173,7 @@ function toggleCortesOverlay() {
   if(abrir){
     if(!cortesMap) initCortesMap();
     cargarDatosCortes(false);
+    cargarUltimoReporte();
   }
 }
 
