@@ -1318,6 +1318,9 @@ function mapEvToGasRow(ev, fecha) {
     dir: ev.dir||'', cert: ev.cert||'',
     description: ev.des||'', obs: ev.obs||'',
     cancel_reason: ev.cr||'', cancel_obs: ev.co||'',
+    cancel_date: ev.fCancel||'',
+    medidor_retirado: ev.medidorRet||'',
+    fecha_inicio_ejec: ev.fInicio||'', fecha_fin_ejec: ev.fFin||'',
     nota_manual: ev.nt_m||'', material_estado: ev.mat||''
   };
 }
@@ -1349,6 +1352,9 @@ function mapGasRowToEv(row) {
     dir: row.dir||'', cert: row.cert||'',
     des: row.description||'', obs: row.obs||'',
     cr: row.cancel_reason||'', co: row.cancel_obs||'',
+    fCancel: row.cancel_date||'',
+    medidorRet: row.medidor_retirado||'',
+    fInicio: row.fecha_inicio_ejec||'', fFin: row.fecha_fin_ejec||'',
     ti: row.hora||'', nt_m: row.nota_manual||'', mat: row.material_estado||''
   };
 }
@@ -1813,6 +1819,10 @@ function processExcelRows(rows, nombre) {
     co:     findCol(['CANCEL_OBSERVATIONS','OBSERVACIÓN DE CANCELACIÓN','cancel_obs','obs_cancel']),
     tec:    findCol(['TECNICOS_ASIGNADOS','TECNICO ASIGNADO','tecnicos','TECNICO','tec']),
     medidor:findCol(['METER_SERIAL_INSTALLED','MEDIDOR INSTALADO','MEDIDOR','medidor','METER_SERIAL']),
+    medidorRet: findCol(['METER_SERIAL_REMOVED','MEDIDOR RETIRADO','medidor_retirado']),
+    fInicio:    findCol(['START_DATE','FECHA Y HORA DE INICIO','fecha_inicio_ejecucion']),
+    fFin:       findCol(['END_DATE','FECHA Y HORA DE FIN','fecha_fin_ejecucion']),
+    fCancel:    findCol(['CANCEL_DATE','FECHA Y HORA DE CANCELACIÓN','fecha_cancelacion']),
   };
 
   // Mostrar columnas detectadas en consola
@@ -1902,7 +1912,11 @@ function processExcelRows(rows, nombre) {
       co:  getVal(row, COL.co, 140),
       ti:  parseTime(rawF),
       nt_m:prev.nt_m||'', mat:prev.mat||'',
-      medidor: getVal(row, COL.medidor, 40)
+      medidor: getVal(row, COL.medidor, 40),
+      medidorRet: getVal(row, COL.medidorRet, 40),
+      fInicio: getVal(row, COL.fInicio, 40),
+      fFin: getVal(row, COL.fFin, 40),
+      fCancel: getVal(row, COL.fCancel, 40)
     };
 
     // Merge incremental (por orden + punto de servicio, no solo por orden)
@@ -2420,6 +2434,19 @@ function osCardHTML(ev, key) {
   if((isR||isC)&&(ev.cr||ev.co)){
     mot='<div class="motivo '+(isR?'rpg':'cnl')+'"><strong>'+(ev.cr||'')+'</strong>'+(ev.co&&ev.co!==ev.cr?'<br><small>'+ev.co.substring(0,200)+'</small>':'')+'</div>';
   }
+  if(isC && ev.fCancel){
+    mot+='<div class="motivo cnl" style="margin-top:3px"><small>🕐 Cancelada: '+ev.fCancel+'</small></div>';
+  }
+
+  // Datos de cierre efectivo (medidor retirado, inicio/fin de ejecución)
+  var cierre='';
+  if(ds==='done'){
+    var cl=[];
+    if(ev.medidorRet) cl.push('🔻 Medidor retirado: '+ev.medidorRet);
+    if(ev.fInicio) cl.push('▶ Inicio: '+ev.fInicio);
+    if(ev.fFin) cl.push('⏹ Fin: '+ev.fFin);
+    if(cl.length) cierre='<div class="os-obs" style="border-left-color:var(--gn)">'+cl.join('<br>')+'</div>';
+  }
 
   // Header empresa
   var empHeader='';
@@ -2472,7 +2499,7 @@ function osCardHTML(ev, key) {
       '<div class="os-loc">📍 '+(ev.ci||'')+(ev.sta?', '+ev.sta:'')+(ev.dir?' — '+ev.dir:'')+
         '<br>👷 '+(ev.op||'')+(ev.cert?'<br>📄 Acta: '+ev.cert:'')+'</div>'+
       (ev.des?'<div class="os-obs">'+ev.des+'</div>':'')+
-      (ev.obs?'<div class="os-obs">'+ev.obs+'</div>':'')+mot+
+      (ev.obs?'<div class="os-obs">'+ev.obs+'</div>':'')+cierre+mot+
       '<div class="os-tags">'+
         '<span class="tag '+sc.tag+'">'+sc.icon+' '+sc.label+'</span>'+
         depTag+
