@@ -1338,6 +1338,31 @@ function normalizeFechaFromGAS(raw) {
   return '';
 }
 
+// Google Sheets autodetecta valores tipo "14:00" como celda de Hora y al
+// leerlos por Apps Script vuelven serializados como Date ISO ancladas al
+// epoch de Sheets (1899-12-30), ej: "1899-12-30T14:00:00.000Z". Esta función
+// detecta ese caso y extrae solo HH:MM en vez de mostrar la cadena completa.
+function normalizeHoraFromGAS(raw) {
+  if(!raw) return '';
+  var s = String(raw).trim();
+  var m = s.match(/^(\d{1,2}):(\d{2})$/);
+  if(m) return s;
+  m = s.match(/T(\d{2}):(\d{2})/);
+  if(m) return m[1]+':'+m[2];
+  return parseTime(s);
+}
+
+// Para FECHA Y HORA DE INICIO/FIN/CANCELACIÓN: si Sheets autoconvirtió el
+// texto a su tipo Fecha y Apps Script lo devolvió como ISO completo, lo
+// reformateamos a "YYYY-MM-DD HH:MM" legible en vez de mostrar el ISO crudo.
+function normalizeDateTimeFromGAS(raw) {
+  if(!raw) return '';
+  var s = String(raw).trim();
+  var m = s.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
+  if(m) return m[1]+' '+m[2]+':'+m[3];
+  return s;
+}
+
 function mapGasRowToEv(row) {
   var oid = row.order_id||'';
   return {
@@ -1352,10 +1377,10 @@ function mapGasRowToEv(row) {
     dir: row.dir||'', cert: row.cert||'',
     des: row.description||'', obs: row.obs||'',
     cr: row.cancel_reason||'', co: row.cancel_obs||'',
-    fCancel: row.cancel_date||'',
+    fCancel: normalizeDateTimeFromGAS(row.cancel_date||''),
     medidorRet: row.medidor_retirado||'',
-    fInicio: row.fecha_inicio_ejec||'', fFin: row.fecha_fin_ejec||'',
-    ti: row.hora||'', nt_m: row.nota_manual||'', mat: row.material_estado||''
+    fInicio: normalizeDateTimeFromGAS(row.fecha_inicio_ejec||''), fFin: normalizeDateTimeFromGAS(row.fecha_fin_ejec||''),
+    ti: normalizeHoraFromGAS(row.hora), nt_m: row.nota_manual||'', mat: row.material_estado||''
   };
 }
 
@@ -2441,10 +2466,12 @@ function osCardHTML(ev, key) {
   // Datos de cierre efectivo (medidor retirado, inicio/fin de ejecución)
   var cierre='';
   if(ds==='done'){
+    var naVals=['no aplica','n/a','na','sin registro',''];
+    var esValido=function(v){ return v && !naVals.includes(String(v).trim().toLowerCase()); };
     var cl=[];
-    if(ev.medidorRet) cl.push('🔻 Medidor retirado: '+ev.medidorRet);
-    if(ev.fInicio) cl.push('▶ Inicio: '+ev.fInicio);
-    if(ev.fFin) cl.push('⏹ Fin: '+ev.fFin);
+    if(esValido(ev.medidorRet)) cl.push('🔻 Medidor retirado: '+ev.medidorRet);
+    if(esValido(ev.fInicio)) cl.push('▶ Inicio: '+ev.fInicio);
+    if(esValido(ev.fFin)) cl.push('⏹ Fin: '+ev.fFin);
     if(cl.length) cierre='<div class="os-obs" style="border-left-color:var(--gn)">'+cl.join('<br>')+'</div>';
   }
 
