@@ -715,6 +715,7 @@ textarea.fi{resize:vertical;min-height:60px}
           <input type="file" id="cortesFileInput" accept=".csv,.xlsx,.xls" onchange="procesarArchivoCortes(event)">
         </div>
         <button class="btn btn-ghost btn-sm" onclick="cargarDatosCortes(true)">↻ Refrescar</button>
+        <button class="btn btn-ghost btn-sm" onclick="limpiarEventosCortes()" style="color:var(--rd)">🧹 Limpiar eventos</button>
         <a class="btn btn-ghost btn-sm" id="cortes-reporte-link" href="#" target="_blank" style="text-decoration:none;display:none">📄 Descargar reporte</a>
       </div>
       <div style="display:flex">
@@ -1146,7 +1147,7 @@ async function gasPost(data) {
 }
 
 // ── CORTES DE ENERGÍA (mapa + biblioteca de subestaciones/circuitos) ──────
-var cortesMap = null, cortesMarkers = [], cortesEventos = [], cortesAddrMarker = null;
+var cortesMap = null, cortesMarkers = [], cortesSubMarkers = [], cortesEventos = [], cortesAddrMarker = null;
 var COLORES_OP = {'Enel/Codensa':'#FF7900','Afinia':'#7028AE','Air-e':'#2563EB','EPM':'#059669','Celsia':'#DC2626'};
 
 async function cargarUltimoReporte() {
@@ -1184,6 +1185,29 @@ function initCortesMap() {
   }).addTo(cortesMap);
 }
 
+async function limpiarEventosCortes() {
+  if (!confirm('¿Seguro que quieres borrar TODOS los eventos del mapa de Cortes? Esta acción no se puede deshacer. La Biblioteca de subestaciones/circuitos NO se toca, solo los eventos activos/pendientes/resueltos.')) {
+    return;
+  }
+  var lbl = document.getElementById('cortes-actualizado');
+  lbl.textContent = 'Borrando eventos...';
+  try {
+    var resultado = await gasPost({action: 'saveCortes', data: []});
+    if (resultado && resultado.ok) {
+      cortesEventos = [];
+      llenarFiltrosCortes();
+      pintarCortes('', '');
+      document.getElementById('cortes-contador').textContent = '0 activos · 0 pendientes · 0 resueltos';
+      document.getElementById('cortes-badge').style.display = 'none';
+      lbl.textContent = 'Eventos borrados. Actualizado: ' + new Date().toLocaleString('es-CO');
+    } else {
+      lbl.textContent = 'Error al borrar: ' + (resultado && resultado.error ? resultado.error : 'desconocido');
+    }
+  } catch(e) {
+    lbl.textContent = 'Error al borrar eventos: ' + e.message;
+  }
+}
+
 async function cargarDatosCortes(manual) {
   var lbl = document.getElementById('cortes-actualizado');
   if(manual) lbl.textContent = 'Actualizando…';
@@ -1218,7 +1242,9 @@ function llenarFiltrosCortes() {
 function pintarCortes(filtroOp, filtroCirc) {
   cortesMarkers.forEach(m => cortesMap.removeLayer(m));
   cortesMarkers = [];
-  cortesEventos.forEach(e => {
+  if(cortesSubMarkers) cortesSubMarkers.forEach(m => cortesMap.removeLayer(m));
+  cortesSubMarkers = [];
+  cortesEventos.forEach((e, idx) => {
     if(filtroOp && e.operador !== filtroOp) return;
     if(filtroCirc && e.circuito !== filtroCirc) return;
     var estado = e.estado || 'activo';
@@ -1229,6 +1255,7 @@ function pintarCortes(filtroOp, filtroCirc) {
     var fechaEv = (e.fecha_evento || '').slice(0,10);
     var etiquetaFecha = fechaEv === hoyStr ? 'HOY' : (fechaEv === mananaStr ? 'MAÑANA' : fechaEv);
     var m = L.circleMarker([e.lat, e.lng], {radius:11, fillColor:color, color:'#fff', weight:2, fillOpacity:0.8}).addTo(cortesMap);
+    var idPopup = 'cortes-barrios-btn-' + idx;
     m.bindPopup(
       '<span style="display:inline-block;padding:1px 8px;border-radius:8px;font-size:11px;font-weight:700;color:#fff;background:'+color+'">'+etiquetaEstado+'</span> '+
       '<span style="display:inline-block;padding:1px 8px;border-radius:8px;font-size:11px;font-weight:700;color:#fff;background:#7028AE;margin-left:4px">'+etiquetaFecha+'</span><br>'+
@@ -1237,10 +1264,49 @@ function pintarCortes(filtroOp, filtroCirc) {
       'Circuito: '+(e.circuito||'N/D')+'<br>'+
       'Horario: '+(e.inicio||'—')+' – '+(e.fin||'—')+'<br>'+
       'Barrios: '+(e.barrios||[]).join(', ')+'<br>'+
-      '<span style="color:#6B7280">'+(e.detalle||'')+'</span>'
+      '<span style="color:#6B7280">'+(e.detalle||'')+'</span><br>'+
+      '<button id="'+idPopup+'" style="margin-top:6px;background:#501C7C;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer">📍 Ver barrios en el mapa</button>'
     );
+    m.on('click', function() {
+      cortesMap.flyTo([e.lat, e.lng], 13, {duration: 0.8});
+    });
+    m.on('popupopen', function() {
+      var btn = document.getElementById(idPopup);
+      if(btn) btn.onclick = function() { ubicarBarriosEnMapa(e); };
+    });
     cortesMarkers.push(m);
   });
+}
+
+async function ubicarBarriosEnMapa(evento) {
+  cortesSubMarkers.forEach(m => cortesMap.removeLayer(m));
+  cortesSubMarkers = [];
+  var barrios = evento.barrios || [];
+  var bounds = [];
+  for(var i = 0; i < barrios.length; i++) {
+    var b = barrios[i];
+    try {
+      var query = encodeURIComponent(b + ', ' + evento.ciudad + ', Colombia');
+      var resp = await fetch('https://nominatim.openstreetmap.org/search?q=' + query + '&format=json&limit=1&countrycodes=co');
+      var data = await resp.json();
+      if(data && data.length > 0) {
+        var lat = parseFloat(data[0].lat), lon = parseFloat(data[0].lon);
+        var sm = L.circleMarker([lat, lon], {radius:7, fillColor:'#7028AE', color:'#fff', weight:2, fillOpacity:0.85}).addTo(cortesMap);
+        sm.bindPopup('<b>'+b+'</b><br><span style="color:#6B7280">'+evento.operador+' — '+evento.ciudad+'</span>');
+        cortesSubMarkers.push(sm);
+        bounds.push([lat, lon]);
+      }
+      await new Promise(r => setTimeout(r, 1100)); // respetar limite de 1 req/seg de Nominatim
+    } catch(err) {
+      console.log('No se pudo geocodificar:', b, err);
+    }
+  }
+  if(bounds.length > 0) {
+    cortesMap.flyToBounds(bounds, {padding:[40,40], maxZoom:15, duration:1});
+  } else {
+    document.getElementById('cortes-resultado').innerHTML =
+      '<p style="color:var(--am)">No se pudo ubicar ningun barrio de esta lista en el mapa (nombres muy genericos o no encontrados en OpenStreetMap).</p>';
+  }
 }
 
 function buscarCoincidenciaCortes(texto) {
@@ -1318,9 +1384,6 @@ function mapEvToGasRow(ev, fecha) {
     dir: ev.dir||'', cert: ev.cert||'',
     description: ev.des||'', obs: ev.obs||'',
     cancel_reason: ev.cr||'', cancel_obs: ev.co||'',
-    cancel_date: ev.fCancel||'',
-    medidor_retirado: ev.medidorRet||'',
-    fecha_inicio_ejec: ev.fInicio||'', fecha_fin_ejec: ev.fFin||'',
     nota_manual: ev.nt_m||'', material_estado: ev.mat||''
   };
 }
@@ -1338,31 +1401,6 @@ function normalizeFechaFromGAS(raw) {
   return '';
 }
 
-// Google Sheets autodetecta valores tipo "14:00" como celda de Hora y al
-// leerlos por Apps Script vuelven serializados como Date ISO ancladas al
-// epoch de Sheets (1899-12-30), ej: "1899-12-30T14:00:00.000Z". Esta función
-// detecta ese caso y extrae solo HH:MM en vez de mostrar la cadena completa.
-function normalizeHoraFromGAS(raw) {
-  if(!raw) return '';
-  var s = String(raw).trim();
-  var m = s.match(/^(\d{1,2}):(\d{2})$/);
-  if(m) return s;
-  m = s.match(/T(\d{2}):(\d{2})/);
-  if(m) return m[1]+':'+m[2];
-  return parseTime(s);
-}
-
-// Para FECHA Y HORA DE INICIO/FIN/CANCELACIÓN: si Sheets autoconvirtió el
-// texto a su tipo Fecha y Apps Script lo devolvió como ISO completo, lo
-// reformateamos a "YYYY-MM-DD HH:MM" legible en vez de mostrar el ISO crudo.
-function normalizeDateTimeFromGAS(raw) {
-  if(!raw) return '';
-  var s = String(raw).trim();
-  var m = s.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
-  if(m) return m[1]+' '+m[2]+':'+m[3];
-  return s;
-}
-
 function mapGasRowToEv(row) {
   var oid = row.order_id||'';
   return {
@@ -1377,10 +1415,7 @@ function mapGasRowToEv(row) {
     dir: row.dir||'', cert: row.cert||'',
     des: row.description||'', obs: row.obs||'',
     cr: row.cancel_reason||'', co: row.cancel_obs||'',
-    fCancel: normalizeDateTimeFromGAS(row.cancel_date||''),
-    medidorRet: row.medidor_retirado||'',
-    fInicio: normalizeDateTimeFromGAS(row.fecha_inicio_ejec||''), fFin: normalizeDateTimeFromGAS(row.fecha_fin_ejec||''),
-    ti: normalizeHoraFromGAS(row.hora), nt_m: row.nota_manual||'', mat: row.material_estado||''
+    ti: row.hora||'', nt_m: row.nota_manual||'', mat: row.material_estado||''
   };
 }
 
@@ -1844,10 +1879,6 @@ function processExcelRows(rows, nombre) {
     co:     findCol(['CANCEL_OBSERVATIONS','OBSERVACIÓN DE CANCELACIÓN','cancel_obs','obs_cancel']),
     tec:    findCol(['TECNICOS_ASIGNADOS','TECNICO ASIGNADO','tecnicos','TECNICO','tec']),
     medidor:findCol(['METER_SERIAL_INSTALLED','MEDIDOR INSTALADO','MEDIDOR','medidor','METER_SERIAL']),
-    medidorRet: findCol(['METER_SERIAL_REMOVED','MEDIDOR RETIRADO','medidor_retirado']),
-    fInicio:    findCol(['START_DATE','FECHA Y HORA DE INICIO','fecha_inicio_ejecucion']),
-    fFin:       findCol(['END_DATE','FECHA Y HORA DE FIN','fecha_fin_ejecucion']),
-    fCancel:    findCol(['CANCEL_DATE','FECHA Y HORA DE CANCELACIÓN','fecha_cancelacion']),
   };
 
   // Mostrar columnas detectadas en consola
@@ -1937,11 +1968,7 @@ function processExcelRows(rows, nombre) {
       co:  getVal(row, COL.co, 140),
       ti:  parseTime(rawF),
       nt_m:prev.nt_m||'', mat:prev.mat||'',
-      medidor: getVal(row, COL.medidor, 40),
-      medidorRet: getVal(row, COL.medidorRet, 40),
-      fInicio: getVal(row, COL.fInicio, 40),
-      fFin: getVal(row, COL.fFin, 40),
-      fCancel: getVal(row, COL.fCancel, 40)
+      medidor: getVal(row, COL.medidor, 40)
     };
 
     // Merge incremental (por orden + punto de servicio, no solo por orden)
@@ -2459,21 +2486,6 @@ function osCardHTML(ev, key) {
   if((isR||isC)&&(ev.cr||ev.co)){
     mot='<div class="motivo '+(isR?'rpg':'cnl')+'"><strong>'+(ev.cr||'')+'</strong>'+(ev.co&&ev.co!==ev.cr?'<br><small>'+ev.co.substring(0,200)+'</small>':'')+'</div>';
   }
-  if(isC && ev.fCancel){
-    mot+='<div class="motivo cnl" style="margin-top:3px"><small>🕐 Cancelada: '+ev.fCancel+'</small></div>';
-  }
-
-  // Datos de cierre efectivo (medidor retirado, inicio/fin de ejecución)
-  var cierre='';
-  if(ds==='done'){
-    var naVals=['no aplica','n/a','na','sin registro',''];
-    var esValido=function(v){ return v && !naVals.includes(String(v).trim().toLowerCase()); };
-    var cl=[];
-    if(esValido(ev.medidorRet)) cl.push('🔻 Medidor retirado: '+ev.medidorRet);
-    if(esValido(ev.fInicio)) cl.push('▶ Inicio: '+ev.fInicio);
-    if(esValido(ev.fFin)) cl.push('⏹ Fin: '+ev.fFin);
-    if(cl.length) cierre='<div class="os-obs" style="border-left-color:var(--gn)">'+cl.join('<br>')+'</div>';
-  }
 
   // Header empresa
   var empHeader='';
@@ -2526,7 +2538,7 @@ function osCardHTML(ev, key) {
       '<div class="os-loc">📍 '+(ev.ci||'')+(ev.sta?', '+ev.sta:'')+(ev.dir?' — '+ev.dir:'')+
         '<br>👷 '+(ev.op||'')+(ev.cert?'<br>📄 Acta: '+ev.cert:'')+'</div>'+
       (ev.des?'<div class="os-obs">'+ev.des+'</div>':'')+
-      (ev.obs?'<div class="os-obs">'+ev.obs+'</div>':'')+cierre+mot+
+      (ev.obs?'<div class="os-obs">'+ev.obs+'</div>':'')+mot+
       '<div class="os-tags">'+
         '<span class="tag '+sc.tag+'">'+sc.icon+' '+sc.label+'</span>'+
         depTag+
