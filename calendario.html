@@ -681,10 +681,10 @@ textarea.fi{resize:vertical;min-height:60px}
 
 <!-- OVERLAY CORTES DE ENERGÍA -->
 <div class="overlay" id="cortes-overlay" style="display:none" onclick="if(event.target===this)toggleCortesOverlay()">
-  <div class="panel" style="max-width:1100px;width:95vw">
-    <div class="panel-hdr">
+  <div class="panel" id="cortes-panel" style="max-width:1100px;width:95vw;position:relative">
+    <div class="panel-hdr" id="cortes-panel-hdr" style="cursor:move;user-select:none">
       <div style="flex:1">
-        <div class="panel-title">⚡ Cortes de energía — Colombia</div>
+        <div class="panel-title">⚡ Cortes de energía — Colombia <span style="font-size:.65rem;font-weight:400;opacity:.7">(arrastra aquí para mover)</span></div>
         <div class="panel-sub" id="cortes-actualizado">Cargando…</div>
       </div>
       <button class="panel-close" onclick="toggleCortesOverlay()">✕</button>
@@ -1175,7 +1175,68 @@ function toggleCortesOverlay() {
     if(!cortesMap) initCortesMap();
     cargarDatosCortes(false);
     cargarUltimoReporte();
+    inicializarArrastreCortes();
+    restaurarPosicionCortes();
   }
+}
+
+// ── Ventana arrastrable (mover el panel de Cortes libremente) ────────
+var cortesArrastreListo = false;
+function inicializarArrastreCortes() {
+  if (cortesArrastreListo) return; // solo enganchar los listeners una vez
+  cortesArrastreListo = true;
+  var panel = document.getElementById('cortes-panel');
+  var handle = document.getElementById('cortes-panel-hdr');
+  var arrastrando = false, offsetX = 0, offsetY = 0;
+
+  handle.addEventListener('mousedown', function(e) {
+    if (e.target.closest('.panel-close')) return; // no arrastrar si clic en cerrar
+    arrastrando = true;
+    var rect = panel.getBoundingClientRect();
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
+    panel.style.position = 'fixed';
+    panel.style.margin = '0';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!arrastrando) return;
+    var x = e.clientX - offsetX;
+    var y = e.clientY - offsetY;
+    // Evitar que se salga completamente de la pantalla
+    x = Math.max(-panel.offsetWidth + 80, Math.min(x, window.innerWidth - 80));
+    y = Math.max(0, Math.min(y, window.innerHeight - 40));
+    panel.style.left = x + 'px';
+    panel.style.top = y + 'px';
+  });
+
+  document.addEventListener('mouseup', function() {
+    if (!arrastrando) return;
+    arrastrando = false;
+    document.body.style.userSelect = '';
+    try {
+      var rect = panel.getBoundingClientRect();
+      localStorage.setItem('cortesPanelPos', JSON.stringify({left: rect.left, top: rect.top}));
+    } catch(e) {}
+  });
+}
+
+function restaurarPosicionCortes() {
+  try {
+    var guardada = localStorage.getItem('cortesPanelPos');
+    if (!guardada) return;
+    var pos = JSON.parse(guardada);
+    var panel = document.getElementById('cortes-panel');
+    // Verificar que la posicion guardada siga siendo visible (evita que
+    // quede "perdido" fuera de pantalla si cambiaste de resolucion)
+    if (pos.left < -panel.offsetWidth + 80 || pos.left > window.innerWidth - 80) return;
+    if (pos.top < 0 || pos.top > window.innerHeight - 40) return;
+    panel.style.position = 'fixed';
+    panel.style.margin = '0';
+    panel.style.left = pos.left + 'px';
+    panel.style.top = pos.top + 'px';
+  } catch(e) {}
 }
 
 function initCortesMap() {
