@@ -1152,15 +1152,13 @@ var COLORES_OP = {'Enel/Codensa':'#FF7900','Afinia':'#7028AE','Air-e':'#2563EB',
 
 async function cargarUltimoReporte() {
   try {
-    var resp = await fetch('https://api.github.com/repos/balexsuarez-del/calendario-enerbit/contents/reportes');
+    var resp = await fetch('https://raw.githubusercontent.com/balexsuarez-del/calendario-enerbit/main/reportes/latest.txt?_=' + Date.now());
     if (!resp.ok) return;
-    var archivos = await resp.json();
-    if (!Array.isArray(archivos) || archivos.length === 0) return;
-    archivos.sort((a, b) => b.name.localeCompare(a.name)); // mas reciente primero (nombres con fecha YYYY-MM-DD)
-    var ultimo = archivos[0];
+    var nombre = (await resp.text()).trim();
+    if (!nombre) return;
     var link = document.getElementById('cortes-reporte-link');
-    link.href = ultimo.download_url;
-    link.textContent = '📄 ' + ultimo.name;
+    link.href = 'https://raw.githubusercontent.com/balexsuarez-del/calendario-enerbit/main/reportes/' + encodeURIComponent(nombre);
+    link.textContent = '📄 ' + nombre;
     link.style.display = 'inline-block';
   } catch (e) {
     console.log('No se pudo cargar el ultimo reporte:', e);
