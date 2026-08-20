@@ -3382,8 +3382,13 @@ function ejecutarDiagnostico(){
   const duplicadosExactos=[];
   Object.values(porDireccion).forEach(function(grupo){
     if(grupo.length>1){
-      const correos = [...new Set(grupo.map(function(g){return (g.ev.em||'').toLowerCase();}))];
-      if(correos.length>1) duplicadas.push(grupo);
+      // Agrupar por EMPRESA RESUELTA (no por email crudo): dos técnicos de la
+      // misma empresa en la misma OS no son "duplicado con distinto aliado".
+      const empresas = [...new Set(grupo.map(function(g){
+        const emp = g.ev.al || (g.ev.em ? getAliado(g.ev.em) : '');
+        return nrm(emp);
+      }))];
+      if(empresas.length>1) duplicadas.push(grupo);
       else duplicadosExactos.push(grupo);
     }
   });
@@ -3410,7 +3415,7 @@ function notaAtrasada(ev, fecha, dias){
 }
 function notaDuplicado(grupo){
   const primero=grupo[0].ev;
-  const aliados=[...new Set(grupo.map(function(g){return g.ev.al||g.ev.em||'';}))];
+  const aliados=[...new Set(grupo.map(function(g){return g.ev.al||(g.ev.em?getAliado(g.ev.em):'');}))];
   return 'Hola, encontré '+grupo.length+' registros para la misma orden y dirección ('+
     (primero.dir||primero.ci||'')+') con aliados distintos: '+aliados.join(' y ')+
     '. ¿Puedes confirmar cuál es la asignación correcta? Orden: '+primero.oid;
@@ -3502,7 +3507,7 @@ function renderDuplicadosHTML(){
   } else {
     duplicadas.slice(0,15).forEach(function(grupo){
       const primero=grupo[0];
-      const aliados=[...new Set(grupo.map(function(g){return g.ev.al||g.ev.em||'';}))];
+      const aliados=[...new Set(grupo.map(function(g){return g.ev.al||(g.ev.em?getAliado(g.ev.em):'');}))];
       html += '<div class="asst-finding" onclick="irYResaltarOS(\''+primero.ev.oid+'\',\''+encodeURIComponent(primero.ev.aid)+'\',\''+primero.fecha+'\')">'+
         '<b>'+grupo.length+' tarjetas</b> — '+(primero.ev.tc||'')+' · '+(primero.ev.ci||'')+
         '<div style="color:var(--gy);font-size:.74rem">'+(primero.ev.dir||'').slice(0,60)+' — aliados: '+aliados.join(', ')+'</div>'+
@@ -3558,7 +3563,7 @@ function renderAsstDiagnostico(){
   } else {
     duplicadas.slice(0,20).forEach(function(grupo){
       const primero=grupo[0];
-      const aliados=[...new Set(grupo.map(function(g){return g.ev.al||g.ev.em||'';}))];
+      const aliados=[...new Set(grupo.map(function(g){return g.ev.al||(g.ev.em?getAliado(g.ev.em):'');}))];
       const nota = notaDuplicado(grupo).replace(/'/g,"\\'");
       html += '<div class="asst-finding">'+
         '<div onclick="irYResaltarOS(\''+primero.ev.oid+'\',\''+encodeURIComponent(primero.ev.aid)+'\',\''+primero.fecha+'\')" style="cursor:pointer">'+
