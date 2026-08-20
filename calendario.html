@@ -925,6 +925,28 @@ function dateKey(d){return`${d.getFullYear()}-${P2(d.getMonth()+1)}-${P2(d.getDa
 function P2(n){return String(n).padStart(2,'0');}
 function nrm(s){return(s||''). trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
 
+// ── Extracción al vuelo de material desde texto de observación (diagnóstico de viabilidad) ──
+function parseMaterialFromObs(obs){
+  if(!obs) return {};
+  var out={};
+  var m;
+  m=obs.match(/Med(?:idor)?\s*eB\s*a\s*instalar:\s*([^\n\r]+?)(?=tel[eé]fono|Informaci[oó]n|Med en sitio|Medidor enerbit a Instalar|$)/i)
+    || obs.match(/Medidor enerbit a Instalar:\s*([^\n\r]+?)(?=Tel[eé]fono|Necesario|$)/i);
+  if(m) out.medidor=m[1].trim().slice(0,40);
+  m=obs.match(/Med en sitio:\s*([^\n\r]+?)(?=Med eB|tel[eé]fono|$)/i)
+    || obs.match(/Medidor en sitio:\s*([^\n\r]+?)(?=Medidor enerbit|Tel[eé]fono|$)/i);
+  if(m) out.medidor_sitio=m[1].trim().slice(0,40);
+  m=obs.match(/Comunicaci[oó]n:\s*([^\n\r]+?)(?=Paneles|Cable|Otro|Apertura|$)/i);
+  if(m) out.comm=m[1].trim().slice(0,60);
+  m=obs.match(/Paneles o cajas:\s*([^\n\r]+?)(?=Cable|Otro|Apertura|$)/i);
+  if(m) out.caja=m[1].trim().slice(0,60);
+  m=obs.match(/Cable de control:\s*([^\n\r]+?)(?=Otro|Apertura|$)/i);
+  if(m) out.cable=m[1].trim().slice(0,60);
+  m=obs.match(/Apertura:\s*([^\n\r]+?)(?=Comentarios|Raz[oó]n|$)/i);
+  if(m) out.apertura=m[1].trim().slice(0,60);
+  return out;
+}
+
 // ── ESTADO OS ────────────────────────────────────────────────
 const RKW=['reprogramación','reprogramacion','reprogramar','pendiente de reprogramación'];
 function calcStatus(ev){
@@ -2611,13 +2633,14 @@ function osCardHTML(ev, key) {
   }
 
   // Caja estructurada de material a utilizar (diagnóstico de viabilidad)
+  var matLive = (ev.mat_medidor||ev.mat_comm||ev.mat_caja) ? {} : parseMaterialFromObs((ev.des||'')+' '+(ev.obs||''));
   var matRows=[
-    ['Medidor a instalar', ev.mat_medidor],
-    ['Medidor en sitio',   ev.mat_medidor_sitio],
-    ['Comunicación',       ev.mat_comm],
-    ['Caja',               ev.mat_caja],
-    ['Cable control',      ev.mat_cable],
-    ['Apertura',           ev.mat_apertura]
+    ['Medidor a instalar', ev.mat_medidor || matLive.medidor],
+    ['Medidor en sitio',   ev.mat_medidor_sitio || matLive.medidor_sitio],
+    ['Comunicación',       ev.mat_comm || matLive.comm],
+    ['Caja',               ev.mat_caja || matLive.caja],
+    ['Cable control',      ev.mat_cable || matLive.cable],
+    ['Apertura',           ev.mat_apertura || matLive.apertura]
   ].filter(function(p){return p[1];});
   var matBox = matRows.length ? (
     '<div class="os-mat-box"><div class="mat-title">🔧 Material a utilizar</div>'+
