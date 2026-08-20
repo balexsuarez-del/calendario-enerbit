@@ -544,7 +544,9 @@ textarea.fi{resize:vertical;min-height:60px}
     <select class="filter-select" id="f-mat" onchange="applyFilters()">
       <option value="">Todos</option>
       <option value="completo">Completo</option>
-      <option value="faltante">Faltante</option>
+      <option value="faltante">Faltante (sin especificar)</option>
+      <option value="no_abastec">No abastecido</option>
+      <option value="aliado_nosum">Aliado no suministró</option>
       <option value="camino">En camino</option>
     </select>
   </div>
@@ -938,10 +940,18 @@ const ST={
   pending:{label:'Pendiente', icon:'⏳',bar:'#2563EB',card:'st-pend', tag:'tag-pend'},
 };
 const MAT={
-  '':       {label:'Sin definir',  bg:'#F3F4F6',cl:'#6B7280'},
-  completo:  {label:'✅ Completo',   bg:'#D1FAE5',cl:'#065F46'},
-  faltante:  {label:'⛔ Faltante',   bg:'#FEE2E2',cl:'#991B1B'},
-  camino:    {label:'🚚 En camino',  bg:'#FEF3C7',cl:'#92400E'},
+  '':          {label:'Sin definir',        bg:'#F3F4F6',cl:'#6B7280'},
+  completo:    {label:'✅ Completo',         bg:'#D1FAE5',cl:'#065F46'},
+  faltante:    {label:'⛔ Faltante',         bg:'#FEE2E2',cl:'#991B1B'},
+  no_abastec:  {label:'📦 No abastecido',    bg:'#FDE68A',cl:'#78350F'},
+  aliado_nosum:{label:'🚫 Aliado no suministró', bg:'#FCA5A5',cl:'#7F1D1D'},
+  camino:      {label:'🚚 En camino',        bg:'#FEF3C7',cl:'#92400E'},
+};
+// Sub-motivos válidos cuando el material está en estado 'faltante' (compatibilidad hacia atrás)
+const MAT_MOTIVOS={
+  '':           {label:'Sin especificar'},
+  no_abastec:   {label:'📦 No abastecido por logística/enerBit'},
+  aliado_nosum: {label:'🚫 Aliado no lo recibió/suministró'},
 };
 const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const DIAS=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
