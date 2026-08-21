@@ -1420,6 +1420,55 @@ function iconoTriangulo(color) {
   return L.divIcon({ html: html, className: '', iconSize: [30, 28], iconAnchor: [15, 26], popupAnchor: [0, -24] });
 }
 
+// ── Auto-transicion de estado por hora de fin (calculado en el navegador) ──
+function claveEventoLocal(e) {
+  return (e.operador||'').trim().toLowerCase() + '|' + (e.ciudad||'').trim().toLowerCase();
+}
+
+function parsearHoraTexto(texto, fechaBase) {
+  if (!texto) return null;
+  var matches = texto.match(/(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?/gi);
+  if (!matches || matches.length === 0) return null;
+  var ultima = matches[matches.length - 1]; // si es un rango, toma la hora final
+  var m = ultima.match(/(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?/i);
+  if (!m) return null;
+  var h = parseInt(m[1], 10), min = parseInt(m[2], 10);
+  var esPM = m[3] && /p/i.test(m[3]);
+  var esAM = m[3] && /a/i.test(m[3]);
+  if (esPM && h < 12) h += 12;
+  if (esAM && h === 12) h = 0;
+  var d = new Date(fechaBase);
+  d.setHours(h, min, 0, 0);
+  return d;
+}
+
+function obtenerFinDate(e) {
+  var base = e.fecha_evento ? new Date(e.fecha_evento + 'T00:00:00') : new Date();
+  return parsearHoraTexto(e.fin, base);
+}
+
+function getOverrideContinua(key) {
+  try { var raw = localStorage.getItem('cortesContinua_' + key); return raw ? JSON.parse(raw) : null; }
+  catch(err) { return null; }
+}
+function setOverrideContinua(key, finISO) {
+  try { localStorage.setItem('cortesContinua_' + key, JSON.stringify({fin: finISO, ts: Date.now()})); } catch(err) {}
+}
+function getPrimeraDeteccion(key) {
+  try { var raw = localStorage.getItem('cortesDetectado_' + key); return raw ? JSON.parse(raw) : null; }
+  catch(err) { return null; }
+}
+function setPrimeraDeteccion(key, finISO) {
+  try { localStorage.setItem('cortesDetectado_' + key, JSON.stringify({fin: finISO, ts: Date.now()})); } catch(err) {}
+}
+
+function marcarContinua(key, finISO) {
+  setOverrideContinua(key, finISO);
+  var fOp = document.getElementById('cortesFOperador').value;
+  var fCirc = document.getElementById('cortesFCircuito').value;
+  pintarCortes(fOp, fCirc);
+}
+
 function pintarCortes(filtroOp, filtroCirc) {
   cortesMarkers.forEach(m => cortesMap.removeLayer(m));
   cortesMarkers = [];
@@ -1429,15 +1478,44 @@ function pintarCortes(filtroOp, filtroCirc) {
   cortesEventos.forEach((e, idx) => {
     if(filtroOp && e.operador !== filtroOp) return;
     if(filtroCirc && e.circuito !== filtroCirc) return;
+
+    var key = claveEventoLocal(e);
     var estado = e.estado || 'activo';
+    var esAutoResuelto = false;
+    var finDate = null;
+
+    if (estado === 'activo') {
+      finDate = obtenerFinDate(e);
+      if (finDate && Date.now() > finDate.getTime()) {
+        var finISO = finDate.toISOString();
+        var override = getOverrideContinua(key);
+        var siguoConfirmado = override && override.fin === finISO;
+        if (!siguoConfirmado) {
+          var detectado = getPrimeraDeteccion(key);
+          if (!detectado || detectado.fin !== finISO) {
+            setPrimeraDeteccion(key, finISO);
+            detectado = {fin: finISO, ts: Date.now()};
+          }
+          // A los 10 minutos de detectado como resuelto, se oculta del mapa
+          if (Date.now() - detectado.ts > 10 * 60 * 1000) return;
+          estado = 'resuelto';
+          esAutoResuelto = true;
+        }
+      }
+    }
+
     var color = estado === 'resuelto' ? '#059669' : (estado === 'pendiente' ? '#F59E0B' : '#DC2626');
-    var etiquetaEstado = estado === 'resuelto' ? 'RESUELTO' : (estado === 'pendiente' ? 'PENDIENTE' : 'ACTIVO');
+    var etiquetaEstado = estado === 'resuelto' ? (esAutoResuelto ? 'RESUELTO (auto)' : 'RESUELTO') : (estado === 'pendiente' ? 'PENDIENTE' : 'ACTIVO');
     var hoyStr = new Date().toISOString().slice(0,10);
     var mananaStr = new Date(Date.now() + 86400000).toISOString().slice(0,10);
     var fechaEv = (e.fecha_evento || '').slice(0,10);
     var etiquetaFecha = fechaEv === hoyStr ? 'HOY' : (fechaEv === mananaStr ? 'MAÑANA' : fechaEv);
     var m = L.marker([e.lat, e.lng], {icon: iconoTriangulo(color)}).addTo(cortesMap);
     var idPopup = 'cortes-barrios-btn-' + idx;
+    var idContinua = 'cortes-continua-btn-' + idx;
+    var botonContinua = esAutoResuelto
+      ? '<button id="'+idContinua+'" style="margin-top:6px;margin-left:6px;background:#DC2626;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer">⚠ ¿Aún continúa?</button>'
+      : '';
     m.bindPopup(
       '<span style="display:inline-block;padding:1px 8px;border-radius:8px;font-size:11px;font-weight:700;color:#fff;background:'+color+'">'+etiquetaEstado+'</span> '+
       '<span style="display:inline-block;padding:1px 8px;border-radius:8px;font-size:11px;font-weight:700;color:#fff;background:#7028AE;margin-left:4px">'+etiquetaFecha+'</span><br>'+
@@ -1447,7 +1525,8 @@ function pintarCortes(filtroOp, filtroCirc) {
       'Horario: '+(e.inicio||'—')+' – '+(e.fin||'—')+'<br>'+
       'Barrios: '+(e.barrios||[]).join(', ')+'<br>'+
       '<span style="color:#6B7280">'+(e.detalle||'')+'</span><br>'+
-      '<button id="'+idPopup+'" style="margin-top:6px;background:#501C7C;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer">📍 Ver barrios en el mapa</button>'
+      (esAutoResuelto ? '<span style="color:var(--am);font-size:11px">Marcado como resuelto automaticamente al pasar la hora de fin. Se ocultara del mapa en 10 min si nadie confirma que continua.</span><br>' : '')+
+      '<button id="'+idPopup+'" style="margin-top:6px;background:#501C7C;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer">📍 Ver barrios en el mapa</button>'+botonContinua
     );
     m.on('click', function() {
       cortesMap.flyTo([e.lat, e.lng], 13, {duration: 0.8});
@@ -1455,6 +1534,8 @@ function pintarCortes(filtroOp, filtroCirc) {
     m.on('popupopen', function() {
       var btn = document.getElementById(idPopup);
       if(btn) btn.onclick = function() { ubicarBarriosEnMapa(e); };
+      var btnContinua = document.getElementById(idContinua);
+      if(btnContinua) btnContinua.onclick = function() { marcarContinua(key, finDate ? finDate.toISOString() : ''); };
     });
     cortesMarkers.push(m);
   });
@@ -1584,6 +1665,18 @@ setInterval(function(){
   var ov = document.getElementById('cortes-overlay');
   if(ov) cargarDatosCortes(false);
 }, 60 * 60 * 1000);
+
+// Repintado cada 30s (solo si el overlay esta visible) para que la
+// auto-transicion a "resuelto" y el auto-ocultado a los 10 min ocurran
+// solos, sin depender de que alguien refresque manualmente.
+setInterval(function(){
+  var ov = document.getElementById('cortes-overlay');
+  if(ov && ov.style.display !== 'none' && cortesMap) {
+    var fOp = document.getElementById('cortesFOperador').value;
+    var fCirc = document.getElementById('cortesFCircuito').value;
+    pintarCortes(fOp, fCirc);
+  }
+}, 30 * 1000);
 
 // ── SINCRONIZACIÓN DEL DATASET COMPLETO (Google Sheets = fuente compartida) ──
 // El Apps Script ya soporta guardar/traer TODO el listado de OS (acciones
