@@ -2255,9 +2255,17 @@ function processExcelRows(rows, nombre) {
   // Preservar notas/estado/material actuales (clave: orden + punto de servicio)
   var savedNotes = {};
   try { var sn=localStorage.getItem('cal_notes'); if(sn) savedNotes=JSON.parse(sn); } catch(e){}
+  var MAT_FIELDS = ['mat_medidor','mat_medidor_sitio','mat_comm','mat_caja','mat_cable','mat_apertura'];
   Object.values(osIdx).flat().forEach(function(ev){
-    if(ev.oid && (ev.em_m||ev.nt_m||ev.mat)) {
-      savedNotes[ev.oid+'|'+ev.aid]={em_m:ev.em_m||'',nt_m:ev.nt_m||'',mat:ev.mat||''};
+    if(ev.oid){
+      var hasNota = ev.em_m||ev.nt_m||ev.mat;
+      var hasMat = MAT_FIELDS.some(function(f){return ev[f];});
+      if(hasNota||hasMat){
+        var entry = savedNotes[ev.oid+'|'+ev.aid] || {};
+        entry.em_m = ev.em_m||entry.em_m||''; entry.nt_m = ev.nt_m||entry.nt_m||''; entry.mat = ev.mat||entry.mat||'';
+        MAT_FIELDS.forEach(function(f){ if(ev[f]) entry[f]=ev[f]; });
+        savedNotes[ev.oid+'|'+ev.aid] = entry;
+      }
     }
   });
 
@@ -2319,7 +2327,10 @@ function processExcelRows(rows, nombre) {
       co:  getVal(row, COL.co, 140),
       ti:  parseTime(rawF),
       nt_m:prev.nt_m||'', mat:prev.mat||'',
-      medidor: getVal(row, COL.medidor, 40)
+      medidor: getVal(row, COL.medidor, 40),
+      mat_medidor:prev.mat_medidor||'', mat_medidor_sitio:prev.mat_medidor_sitio||'',
+      mat_comm:prev.mat_comm||'', mat_caja:prev.mat_caja||'',
+      mat_cable:prev.mat_cable||'', mat_apertura:prev.mat_apertura||''
     };
 
     // Merge incremental (por orden + punto de servicio, no solo por orden)
@@ -2331,6 +2342,7 @@ function processExcelRows(rows, nombre) {
       ev.em_m=ex.em_m||ev.em_m;
       ev.nt_m=ex.nt_m||ev.nt_m;
       ev.mat=ex.mat||ev.mat;
+      MAT_FIELDS.forEach(function(f){ ev[f]=ex[f]||ev[f]; });
       osIdx[fecha][existIdx]=ev;
     } else {
       // Este punto de servicio, ¿estaba en otra fecha? mover
@@ -2341,6 +2353,7 @@ function processExcelRows(rows, nombre) {
         ev.em_m=old.ev.em_m||ev.em_m;
         ev.nt_m=old.ev.nt_m||ev.nt_m;
         ev.mat=old.ev.mat||ev.mat;
+        MAT_FIELDS.forEach(function(f){ ev[f]=old.ev[f]||ev[f]; });
       }
       osIdx[fecha].push(ev);
     }
