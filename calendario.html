@@ -361,10 +361,10 @@ textarea.fi{resize:vertical;min-height:60px}
 
 /* Lista de materiales en OS */
 .mat-section { margin-top:8px;border-top:1px solid #E5E7EB;padding-top:8px; }
-.mat-title { font-size:.65rem;font-weight:700;color:#501C7C;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:flex;align-items:center;gap:4px; }
+.mat-title { font-size:.65rem;font-weight:700;color:#6D28D9;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:flex;align-items:center;gap:4px; }
 .mat-list { display:flex;flex-direction:column;gap:4px; }
 .mat-item { display:flex;align-items:center;gap:6px;font-size:.72rem;padding:4px 8px;border-radius:6px;background:#F9FAFB;border:1px solid #E5E7EB; }
-.mat-item-txt { flex:1;color:#374151; }
+.mat-item-txt { flex:1;color:#4C1D95; }
 .mat-status-btn { display:flex;gap:3px; }
 .msb { border:none;border-radius:4px;padding:2px 6px;font-size:.6rem;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s; }
 .msb:hover { opacity:.8;transform:scale(1.05); }
@@ -484,10 +484,10 @@ textarea.fi{resize:vertical;min-height:60px}
 .chip-q:hover { background:#DDD6FE; }
 
 /* ── MATERIALES COMPACTOS ── */
-.mat-section { margin-top:6px;padding-top:6px;border-top:1px solid #F3F4F6; }
-.mat-title { font-size:.62rem;font-weight:700;color:#501C7C;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px; }
-.mat-item { display:flex;align-items:center;gap:5px;font-size:.7rem;padding:3px 6px;border-radius:5px;background:#F9FAFB;border:1px solid #E5E7EB;margin-bottom:3px; }
-.mat-item-txt { flex:1;color:#374151; }
+.mat-section { margin-top:6px;padding-top:6px;border-top:1px solid #EDE9FE; }
+.mat-title { font-size:.62rem;font-weight:700;color:#6D28D9;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px; }
+.mat-item { display:flex;align-items:center;gap:5px;font-size:.7rem;padding:3px 6px;border-radius:5px;background:#EDE9FE;border:1px solid #C4B5FD;margin-bottom:3px; }
+.mat-item-txt { flex:1;color:#4C1D95; }
 .mat-btns { display:flex;gap:2px; }
 .msb { border:none;border-radius:4px;padding:2px 5px;font-size:.6rem;font-weight:700;cursor:pointer;font-family:inherit;opacity:.6;transition:all .15s; }
 .msb:hover,.msb.active { opacity:1;transform:scale(1.05); }
@@ -2801,7 +2801,7 @@ function renderOSMaterialCards(os_list) {
     var matsHTML = '';
     if(mts.length) {
       matsHTML = '<div style="margin-top:8px;border-top:1px solid #F3F4F6;padding-top:6px">'
-        + '<div style="font-size:.62rem;font-weight:700;color:#501C7C;text-transform:uppercase;margin-bottom:5px">📦 Materiales</div>';
+        + '<div style="font-size:.62rem;font-weight:700;color:#6D28D9;text-transform:uppercase;margin-bottom:5px">📦 Materiales</div>';
       mts.forEach(function(mat, idx) {
         var st2 = getMatStatus(oid, idx);
         matsHTML += '<div style="display:flex;align-items:center;gap:4px;padding:3px 6px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:5px;margin-bottom:3px">'
