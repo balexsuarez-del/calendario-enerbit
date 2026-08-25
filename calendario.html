@@ -716,7 +716,7 @@ textarea.fi{resize:vertical;min-height:60px}
           <input type="file" id="cortesFileInput" accept=".csv,.xlsx,.xls" onchange="procesarArchivoCortes(event)">
         </div>
         <div>
-          <label style="display:block;font-size:.68rem;color:var(--pd);margin-bottom:3px;font-weight:700">📤 Cargar EVENTOS al mapa (plantilla)</label>
+          <label style="display:block;font-size:.68rem;color:var(--pd);margin-bottom:3px;font-weight:700">📤 Cargar EVENTOS al mapa (cualquier reporte/plantilla)</label>
           <input type="file" id="cortesCargaEventosInput" accept=".xlsx,.xls" onchange="cargarEventosDesdeExcel(event)">
         </div>
         <button class="btn btn-ghost btn-sm" onclick="cargarDatosCortes(true)">↻ Refrescar</button>
@@ -1266,6 +1266,179 @@ function reconciliarPorFechaJS(eventos, hoyStr) {
   return resultado;
 }
 
+// ── Tabla de respaldo de coordenadas por ciudad/departamento (cuando el
+// archivo subido no trae lat/lng, como el reporte "bonito") ────────────
+var COORD_CIUDADES = {
+  'bogota':[4.65,-74.10], 'soacha':[4.58,-74.22], 'funza':[4.72,-74.21], 'cota':[4.81,-74.10],
+  'chia':[4.86,-74.03], 'zipaquira':[5.02,-74.00], 'cundinamarca':[4.86,-74.03],
+  'cartagena':[10.391,-75.479], 'bolivar':[9.24,-74.75], 'barranquilla':[10.968,-74.781],
+  'atlantico':[10.9,-74.8], 'sabanalarga':[10.64,-74.92], 'soledad':[10.92,-74.77],
+  'santa marta':[11.24,-74.20], 'magdalena':[10.4,-74.2], 'riohacha':[11.544,-72.907],
+  'guajira':[11.5,-72.9], 'monteria':[8.75,-75.88], 'cordoba':[8.75,-75.88],
+  'sincelejo':[9.30,-75.40], 'sucre':[9.30,-75.40], 'valledupar':[10.47,-73.25], 'cesar':[10.47,-73.25],
+  'medellin':[6.25,-75.56], 'antioquia':[6.7,-75.3], 'rionegro':[6.15,-75.37],
+  'cali':[3.45,-76.53], 'valle del cauca':[3.9,-76.3], 'valle':[3.9,-76.3],
+  'ibague':[4.44,-75.23], 'tolima':[4.44,-75.23], 'manizales':[5.07,-75.52], 'caldas':[5.07,-75.52],
+  'pereira':[4.81,-75.69], 'risaralda':[4.81,-75.69], 'armenia':[4.53,-75.68], 'quindio':[4.53,-75.68],
+  'popayan':[2.44,-76.61], 'cauca':[2.44,-76.61], 'pasto':[1.21,-77.28], 'narino':[1.21,-77.28],
+  'bucaramanga':[7.12,-73.12], 'santander':[7.12,-73.12], 'cucuta':[7.89,-72.50], 'norte de santander':[7.89,-72.50],
+  'tunja':[5.54,-73.36], 'boyaca':[5.54,-73.36], 'villavicencio':[4.14,-73.63], 'meta':[4.14,-73.63],
+  'neiva':[2.93,-75.28], 'huila':[2.93,-75.28], 'yopal':[5.33,-72.4], 'casanare':[5.33,-72.4],
+  'arauca':[7.08,-70.76], 'quibdo':[5.69,-76.66], 'choco':[5.69,-76.66],
+  'colombia':[4.5,-74.0],
+};
+function quitarAcentosJS(s) {
+  var acentos = {'á':'a','é':'e','í':'i','ó':'o','ú':'u','ñ':'n'};
+  var out = String(s||'').toLowerCase();
+  Object.keys(acentos).forEach(function(k){ out = out.split(k).join(acentos[k]); });
+  return out;
+}
+function geocodificarRespaldo(texto) {
+  var t = quitarAcentosJS(texto);
+  for (var clave in COORD_CIUDADES) {
+    var patron = clave.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+');
+    var re = new RegExp('\\b' + patron + '\\b');
+    if (re.test(t)) return COORD_CIUDADES[clave];
+  }
+  return [4.5, -74.0]; // centro de Colombia si no se reconoce nada
+}
+
+var MESES_ES = {ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,oct:10,nov:11,dic:12};
+function parsearFechaTextoEs(texto) {
+  if (!texto) return null;
+  var m = String(texto).match(/(\d{1,2})[\s\-\/]*([a-zA-Zé]{3,})/);
+  if (!m) return null;
+  var dia = parseInt(m[1], 10);
+  var mesTxt = m[2].toLowerCase().slice(0,3).replace('é','e');
+  var mes = MESES_ES[mesTxt];
+  if (!mes) return null;
+  var anio = new Date().getFullYear();
+  var mm = String(mes).padStart(2,'0');
+  var dd = String(dia).padStart(2,'0');
+  return anio + '-' + mm + '-' + dd;
+}
+
+function normalizarClaveHeader(h) {
+  var s = String(h||'').toLowerCase();
+  var acentos = {'á':'a','é':'e','í':'i','ó':'o','ú':'u','ñ':'n'};
+  Object.keys(acentos).forEach(function(k){ s = s.split(k).join(acentos[k]); });
+  return s.replace(/[^a-z]/g, '');
+}
+
+// Detecta el formato del archivo y devuelve filas ya normalizadas al
+// esquema interno, sin importar si es la plantilla plana o el reporte
+// "bonito" con secciones y emojis. Un solo recorrido (sin bucles
+// anidados) para no reprocesar secciones dos veces.
+function parsearFilasUniversal(sheet) {
+  var matriz = XLSX.utils.sheet_to_json(sheet, {header: 1, defval: ''});
+  var resultados = [];
+  var geocodificoAlgo = false;
+  var idxActual = null;
+  var modoActual = null; // 'plantilla' o 'reporte'
+
+  for (var f = 0; f < matriz.length; f++) {
+    var fila = matriz[f];
+    var celdasLlenas = fila.filter(function(c){ return String(c||'').trim() !== ''; }).length;
+    if (celdasLlenas === 0) continue;
+
+    var headersNorm = fila.map(normalizarClaveHeader);
+    var esHeaderPlantilla = headersNorm.indexOf('operador') !== -1 && headersNorm.indexOf('ciudad') !== -1 && headersNorm.indexOf('estado') !== -1 && headersNorm.indexOf('lat') !== -1;
+    var esHeaderReporte = !esHeaderPlantilla && headersNorm.indexOf('operador') !== -1 && headersNorm.indexOf('estado') !== -1 &&
+                          headersNorm.some(function(h){return h.indexOf('ciudad')!==-1 || h.indexOf('regi')!==-1;});
+
+    if (esHeaderPlantilla || esHeaderReporte) {
+      var idx = {};
+      fila.forEach(function(h, i) { idx[normalizarClaveHeader(h)] = i; });
+      idxActual = idx;
+      modoActual = esHeaderPlantilla ? 'plantilla' : 'reporte';
+      continue;
+    }
+
+    // Otra tabla desconocida empieza aqui (ej. "Operador / Región | Sitio
+    // Oficial | Canal X"), no es data de eventos: dejamos de usar el
+    // mapeo anterior hasta que aparezca un header valido de nuevo.
+    var esOtraTabla = headersNorm.some(function(h){ return h.indexOf('sitiooficial') !== -1 || h.indexOf('canalx') !== -1 || h.indexOf('twitter') !== -1; });
+    if (esOtraTabla) { idxActual = null; modoActual = null; continue; }
+
+    // Fila de titulo de seccion (una sola celda con texto largo): no es data.
+    if (celdasLlenas === 1 && String(fila[0]||'').length > 15) continue;
+
+    if (!idxActual) continue; // aun no hay ningun header valido activo
+
+    var get = (function(filaLocal, idxLocal) {
+      return function(nombre) {
+        var i = idxLocal[nombre];
+        return i !== undefined ? filaLocal[i] : '';
+      };
+    })(fila, idxActual);
+
+    if (modoActual === 'plantilla') {
+      var barriosTxt = String(get('barrios')||'');
+      var operadorTxt = String(get('operador')||'').trim();
+      var ciudadTxt2 = String(get('ciudad')||'').trim();
+      if (!operadorTxt || !ciudadTxt2) continue;
+      resultados.push({
+        operador: operadorTxt,
+        ciudad: ciudadTxt2,
+        lat: parseFloat(get('lat')) || 0,
+        lng: parseFloat(get('lng')) || 0,
+        subestacion: String(get('subestacion')||'N/D').trim() || 'N/D',
+        circuito: String(get('circuito')||'N/D').trim() || 'N/D',
+        inicio: String(get('inicio')||'—').trim() || '—',
+        fin: String(get('fin')||'—').trim() || '—',
+        barrios: barriosTxt.split(',').map(function(b){return b.trim();}).filter(Boolean),
+        detalle: String(get('detalle')||'').trim(),
+        fecha_evento: String(get('fechaevento')||'').trim(),
+        estado: ['activo','pendiente','resuelto'].indexOf(String(get('estado')||'').trim().toLowerCase()) !== -1 ? String(get('estado')).trim().toLowerCase() : 'activo',
+        fuente: String(get('fuente')||'').trim(),
+      });
+    } else {
+      var estadoRaw = String(get('estado')||'').toLowerCase();
+      var estado = 'activo';
+      if (estadoRaw.indexOf('pendiente') !== -1) estado = 'pendiente';
+      else if (estadoRaw.indexOf('resuelto') !== -1) estado = 'resuelto';
+      else if (estadoRaw.indexOf('activo') !== -1) estado = 'activo';
+
+      var operadorTxt2 = String(get('operador')||'').trim();
+      var ciudadTxt = String(get('ciudad') || get('regionciudad') || '').trim();
+      if (!operadorTxt2 || !ciudadTxt) continue;
+
+      var barriosTxt2 = String(get('barriossectores') || get('barrios') || '').trim();
+      var circSub = String(get('circuitosubestacion') || get('subestacioncircuito') || get('circuito') || '').trim();
+      var circuito = 'N/D', subestacion = 'N/D';
+      var mCirc = circSub.match(/circuito\s+[^,;]+/i);
+      var mSub = circSub.match(/subestaci[oó]n\s+[^,;]+/i);
+      if (mCirc) circuito = mCirc[0];
+      if (mSub) subestacion = mSub[0];
+      if (!mCirc && !mSub && circSub && circSub.toUpperCase() !== 'N/D') circuito = circSub;
+
+      var fechaTxt = String(get('fecha')||'').trim();
+      var fechaEvento = parsearFechaTextoEs(fechaTxt) || new Date().toISOString().slice(0,10);
+
+      var coords = geocodificarRespaldo(ciudadTxt);
+      geocodificoAlgo = true;
+      var horarioTxt = String(get('horario')||'—');
+      var partesHorario = horarioTxt.split(/[–\-]/);
+
+      resultados.push({
+        operador: operadorTxt2,
+        ciudad: ciudadTxt,
+        lat: coords[0], lng: coords[1],
+        subestacion: subestacion, circuito: circuito,
+        inicio: (partesHorario[0]||'—').trim() || '—',
+        fin: (partesHorario.length > 1 ? partesHorario[partesHorario.length-1] : '—').trim() || '—',
+        barrios: barriosTxt2.split(',').map(function(b){return b.trim();}).filter(Boolean),
+        detalle: String(get('detalle')||'').trim(),
+        fecha_evento: fechaEvento,
+        estado: estado,
+        fuente: 'archivo subido (reporte)',
+      });
+    }
+  }
+
+  return { filas: resultados, geocodificado: geocodificoAlgo };
+}
+
 async function cargarEventosDesdeExcel(evt) {
   var file = evt.target.files[0];
   if (!file) return;
@@ -1278,36 +1451,18 @@ async function cargarEventosDesdeExcel(evt) {
     try {
       var data = new Uint8Array(e.target.result);
       var wb = XLSX.read(data, {type: 'array'});
-      var sheetName = wb.SheetNames.includes('Eventos') ? 'Eventos' : wb.SheetNames[0];
-      var sheet = wb.Sheets[sheetName];
-      var filas = XLSX.utils.sheet_to_json(sheet, {defval: ''});
 
-      if (filas.length === 0) {
-        panelResultado.innerHTML = '<p style="color:var(--rd)">El archivo no tiene filas de datos en la hoja "Eventos".</p>';
-        return;
-      }
-
-      var nuevos = filas.map(function(fila) {
-        return {
-          operador: String(fila.operador || '').trim(),
-          ciudad: String(fila.ciudad || '').trim(),
-          lat: parseFloat(fila.lat) || 0,
-          lng: parseFloat(fila.lng) || 0,
-          subestacion: String(fila.subestacion || 'N/D').trim(),
-          circuito: String(fila.circuito || 'N/D').trim(),
-          inicio: String(fila.inicio || '—').trim(),
-          fin: String(fila.fin || '—').trim(),
-          barrios: String(fila.barrios || '').split(',').map(function(b){return b.trim();}).filter(Boolean),
-          detalle: String(fila.detalle || '').trim(),
-          fecha_reporte: String(fila.fecha_evento || '').trim(),
-          fecha_evento: String(fila.fecha_evento || '').trim(),
-          estado: ['activo','pendiente','resuelto'].includes(String(fila.estado||'').trim()) ? String(fila.estado).trim() : 'activo',
-          fuente: String(fila.fuente || '').trim(),
-        };
-      }).filter(function(ev) { return ev.operador && ev.ciudad; });
+      var nuevos = [];
+      var geocodificoAlgo = false;
+      wb.SheetNames.forEach(function(nombreHoja) {
+        var r = parsearFilasUniversal(wb.Sheets[nombreHoja]);
+        nuevos = nuevos.concat(r.filas);
+        if (r.geocodificado) geocodificoAlgo = true;
+      });
+      nuevos = nuevos.filter(function(ev) { return ev.operador && ev.ciudad; });
 
       if (nuevos.length === 0) {
-        panelResultado.innerHTML = '<p style="color:var(--rd)">Ninguna fila tiene "operador" y "ciudad" completos. Revisa el formato contra la plantilla.</p>';
+        panelResultado.innerHTML = '<p style="color:var(--rd)">No se reconoció ningún formato válido (ni plantilla plana ni reporte). Revisa que tenga columnas de Operador, Ciudad/Región y Estado.</p>';
         return;
       }
 
@@ -1349,7 +1504,8 @@ async function cargarEventosDesdeExcel(evt) {
 
       panelResultado.innerHTML = '<p style="color:var(--gn);font-weight:700">✓ Carga exitosa</p>' +
         '<p>' + nuevos.length + ' evento(s) del archivo aplicados. Total en el mapa: ' + listaFinal.length + '.<br>' +
-        alimentados + ' registro(s) enviados a la Biblioteca (traían circuito/subestación).</p>';
+        alimentados + ' registro(s) enviados a la Biblioteca (traían circuito/subestación).</p>' +
+        (geocodificoAlgo ? '<p style="color:var(--am);font-size:12px">⚠ Algunos eventos no traían coordenadas (lat/lng) — se ubicaron de forma aproximada por ciudad/departamento, no con precisión de barrio.</p>' : '');
 
       cargarDatosCortes(false);
     } catch (err) {
