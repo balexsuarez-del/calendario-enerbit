@@ -2910,6 +2910,43 @@ function lazyLoadJulio() {
   applyFilters();
 }
 
+
+// Carga lazy de julio desde GitHub Pages
+var _julioLoaded = false;
+function lazyLoadJulio(cb) {
+  if(_julioLoaded){ if(cb) cb(); return; }
+  fetch('datos_julio.json')
+    .then(function(r){return r.json();})
+    .then(function(julio){
+      Object.entries(julio).forEach(function(e){
+        var fecha=e[0], evs=e[1];
+        if(!rawOS[fecha]) rawOS[fecha]=[];
+        var ex=new Set(rawOS[fecha].map(function(v){return v.o;}));
+        evs.forEach(function(ev){ if(!ex.has(ev.o)){ rawOS[fecha].push(ev); } });
+      });
+      // Re-expandir
+      Object.entries(julio).forEach(function(e){
+        var fecha=e[0], evs=e[1];
+        if(!osIdx[fecha]) osIdx[fecha]=[];
+        var ex=new Set(osIdx[fecha].map(function(v){return v.oid;}));
+        evs.forEach(function(ev){
+          var expanded = ev.oid ? ev : (function(){
+            return {oid:ev.o||'',aid:ev.a||ev.o+'-a'||'',
+              st:ST[ev.s]||'pending',em_m:'',ci:ev.c||'',sta:ev.d||'',
+              tc:ev.t||'',tn:ev.t||'',op:ev.p||'',em:'',
+              al:AL[ev.l]||'enerBit',tec:ev.p||'',dir:ev.r||'',
+              cert:'',des:ev.ob||'',obs:ev.ir||'',cr:ev.x||'',co:ev.co||'',
+              ti:ev.f||'',nt_m:'',mat:'',mts:ev.mt||[]};
+          })();
+          if(!ex.has(expanded.oid)){ osIdx[fecha].push(expanded); }
+        });
+      });
+      _julioLoaded=true;
+      if(cb) cb(); else { buildCalendar(); applyFilters(); }
+    })
+    .catch(function(e){ console.warn('No se pudo cargar julio:',e); if(cb) cb(); });
+}
+
 </script>
 </body>
 </html>
