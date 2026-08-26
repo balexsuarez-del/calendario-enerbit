@@ -434,6 +434,19 @@ textarea.fi{resize:vertical;min-height:60px}
 }
 .mat-util-label { color:#7C3AED;font-weight:600;min-width:100px; }
 
+
+/* ── BIBLIOTECA CORTES ── */
+.bib-panel { padding:10px 16px;border-top:1px solid var(--bd);background:var(--card); }
+.bib-title { font-size:.72rem;font-weight:700;color:#501C7C;margin-bottom:6px;display:flex;align-items:center;gap:6px; }
+.bib-table { width:100%;border-collapse:collapse;font-size:.7rem; }
+.bib-table th { background:#F3F4F6;padding:4px 8px;text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #E5E7EB; }
+.bib-table td { padding:4px 8px;border-bottom:1px solid #F3F4F6;color:#374151; }
+.bib-table tr:hover td { background:#F9FAFB; }
+.bib-form { display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:flex-end; }
+.bib-input { padding:5px 8px;border:1px solid #E5E7EB;border-radius:6px;font-size:.72rem;font-family:inherit; }
+.bib-input:focus { outline:none;border-color:#7028AE; }
+.bib-badge { background:#EDE9FE;color:#501C7C;padding:2px 7px;border-radius:10px;font-size:.65rem;font-weight:600; }
+
 </style>
 </head>
 <body>
@@ -732,7 +745,11 @@ textarea.fi{resize:vertical;min-height:60px}
           <select id="cortesFOperador" class="fi" style="min-width:150px;padding:6px"><option value="">Todos</option></select>
         </div>
         <div>
-          <label style="display:block;font-size:.68rem;color:var(--gm);margin-bottom:3px">Circuito</label>
+     <div>
+          <label style="display:block;font-size:.68rem;color:var(--gm);margin-bottom:3px">Subestación</label>
+          <select id="cortesFSub" class="fi" style="min-width:160px;padding:6px"><option value="">Todas</option></select>
+        </div>
+             <label style="display:block;font-size:.68rem;color:var(--gm);margin-bottom:3px">Circuito</label>
           <select id="cortesFCircuito" class="fi" style="min-width:150px;padding:6px"><option value="">Todos</option></select>
         </div>
         <div style="flex:1;min-width:200px">
@@ -749,6 +766,7 @@ textarea.fi{resize:vertical;min-height:60px}
           <input type="file" id="cortesCargaEventosInput" accept=".xlsx,.xls" onchange="cargarEventosDesdeExcel(event)">
         </div>
         <button class="btn btn-ghost btn-sm" onclick="cargarDatosCortes(true)">↻ Refrescar</button>
+        <button class="btn btn-ghost btn-sm" onclick="toggleBibliotecaCortes()" id="btn-bib-cortes">📚 Biblioteca</button>
         <button class="btn btn-ghost btn-sm" onclick="limpiarEventosCortes()" style="color:var(--rd)">🧹 Limpiar eventos</button>
         <a class="btn btn-ghost btn-sm" id="cortes-reporte-link" href="#" target="_blank" style="text-decoration:none;display:none">📄 Descargar reporte</a>
       </div>
@@ -757,6 +775,33 @@ textarea.fi{resize:vertical;min-height:60px}
         <div id="cortes-panel" style="width:280px;border-left:1px solid var(--bd);padding:12px;overflow-y:auto;height:60vh;font-size:.8rem">
           <div style="font-weight:700;color:var(--pd);margin-bottom:6px">Resultado</div>
           <div id="cortes-resultado" style="color:var(--gm)">Filtra el mapa o verifica una dirección/archivo.</div>
+<div id="cortes-bib-panel" style="display:none" class="bib-panel">
+  <div class="bib-title">📚 Biblioteca de Subestaciones y Circuitos
+    <span class="bib-badge" id="bib-count">0 registros</span>
+    <button class="btn btn-ghost btn-sm" style="margin-left:auto;font-size:.65rem" onclick="exportarBiblioteca()">⬇ Exportar</button>
+  </div>
+  <div class="bib-form">
+    <div><label style="font-size:.65rem;color:var(--gm);display:block;margin-bottom:2px">Operador</label>
+      <input class="bib-input" id="bib-op" placeholder="Ej: Afinia" list="bib-ops-list" style="width:130px">
+      <datalist id="bib-ops-list"></datalist></div>
+    <div><label style="font-size:.65rem;color:var(--gm);display:block;margin-bottom:2px">Subestación</label>
+      <input class="bib-input" id="bib-sub" placeholder="Ej: Riomar 115kV" list="bib-subs-list" style="width:180px">
+      <datalist id="bib-subs-list"></datalist></div>
+    <div><label style="font-size:.65rem;color:var(--gm);display:block;margin-bottom:2px">Circuito</label>
+      <input class="bib-input" id="bib-cir" placeholder="Ej: BARR1301" list="bib-circs-list" style="width:150px">
+      <datalist id="bib-circs-list"></datalist></div>
+    <div><label style="font-size:.65rem;color:var(--gm);display:block;margin-bottom:2px">Departamento/Ciudad</label>
+      <input class="bib-input" id="bib-dep" placeholder="Ej: Atlántico" style="width:140px"></div>
+    <button class="btn btn-primary btn-sm" onclick="agregarBiblioteca()">+ Agregar</button>
+    <input class="bib-input" id="bib-buscar" placeholder="🔍 Buscar..." style="width:140px" oninput="filtrarBiblioteca()">
+  </div>
+  <div style="max-height:220px;overflow-y:auto">
+    <table class="bib-table">
+      <thead><tr><th>Operador</th><th>Subestación</th><th>Circuito</th><th>Ciudad/Depto</th><th>Veces</th><th></th></tr></thead>
+      <tbody id="bib-tbody"></tbody>
+    </table>
+  </div>
+</div>
         </div>
       </div>
     </div>
@@ -1417,6 +1462,7 @@ async function cargarDatosCortes(manual) {
   try {
     var data = await gasGet({action:'getCortes'});
     cortesEventos = (data && data.eventos) ? data.eventos : [];
+    alimentarBibDesdeEventos(cortesEventos);
     lbl.textContent = 'Actualizado: ' + (data && data.actualizado ? data.actualizado : new Date().toLocaleString('es-CO'));
     llenarFiltrosCortes();
     pintarCortes('', '');
@@ -1434,6 +1480,7 @@ async function cargarDatosCortes(manual) {
 }
 
 function llenarFiltrosCortes() {
+  llenarFiltroSub();
   var fOp = document.getElementById('cortesFOperador');
   var fCirc = document.getElementById('cortesFCircuito');
   var ops = [...new Set(cortesEventos.map(e => e.operador))];
@@ -4472,6 +4519,159 @@ function exportMatExcel() {
   a.download='Materiales_OS_'+new Date().toISOString().split('T')[0]+'.csv';
   a.click();
   showToast('✅ Excel exportado: '+(rows.length-1)+' filas');
+}
+
+
+
+// ══ BIBLIOTECA SUBESTACIONES/CIRCUITOS ══════════════════════
+var cortesBiblioteca = [];
+try { cortesBiblioteca = JSON.parse(localStorage.getItem('cortes_bib')||'[]'); } catch(e){}
+
+function saveBiblioteca() {
+  try { localStorage.setItem('cortes_bib', JSON.stringify(cortesBiblioteca)); } catch(e){}
+}
+
+function toggleBibliotecaCortes() {
+  var p = document.getElementById('cortes-bib-panel');
+  if(!p) return;
+  var open = p.style.display === 'none';
+  p.style.display = open ? 'block' : 'none';
+  document.getElementById('btn-bib-cortes').style.background = open ? '#EDE9FE' : '';
+  if(open) renderBiblioteca();
+}
+
+function agregarBiblioteca() {
+  var op  = (document.getElementById('bib-op')?.value||'').trim();
+  var sub = (document.getElementById('bib-sub')?.value||'').trim();
+  var cir = (document.getElementById('bib-cir')?.value||'').trim();
+  var dep = (document.getElementById('bib-dep')?.value||'').trim();
+  if(!sub && !cir) { showToast('Ingresa al menos subestación o circuito','err'); return; }
+
+  // Buscar si ya existe
+  var existing = cortesBiblioteca.find(function(r){
+    return r.subestacion===sub && r.circuito===cir && r.operador===op;
+  });
+  if(existing) {
+    existing.veces = (existing.veces||1) + 1;
+    showToast('Registro actualizado');
+  } else {
+    cortesBiblioteca.push({operador:op, subestacion:sub, circuito:cir, ciudad:dep, veces:1, fecha:new Date().toLocaleDateString('es-CO')});
+    showToast('✅ Agregado a biblioteca');
+  }
+  saveBiblioteca();
+  document.getElementById('bib-op').value='';
+  document.getElementById('bib-sub').value='';
+  document.getElementById('bib-cir').value='';
+  document.getElementById('bib-dep').value='';
+  renderBiblioteca();
+  actualizarDatalistsBib();
+  llenarFiltroSub();
+}
+
+function eliminarBiblioteca(idx) {
+  cortesBiblioteca.splice(idx, 1);
+  saveBiblioteca();
+  renderBiblioteca();
+  actualizarDatalistsBib();
+  llenarFiltroSub();
+}
+
+var _bibFiltro = '';
+function filtrarBiblioteca() {
+  _bibFiltro = (document.getElementById('bib-buscar')?.value||'').toLowerCase();
+  renderBiblioteca();
+}
+
+function renderBiblioteca() {
+  var tbody = document.getElementById('bib-tbody');
+  var count = document.getElementById('bib-count');
+  if(!tbody) return;
+
+  var data = _bibFiltro
+    ? cortesBiblioteca.filter(function(r){
+        return (r.operador+r.subestacion+r.circuito+r.ciudad).toLowerCase().includes(_bibFiltro);
+      })
+    : cortesBiblioteca;
+
+  // Combinar con los que vienen de los eventos actuales
+  var fromEvents = [];
+  cortesEventos.forEach(function(ev){
+    if(ev.subestacion && ev.subestacion !== 'N/D') {
+      var key = (ev.operador||'')+'|'+(ev.subestacion||'')+'|'+(ev.circuito||'');
+      if(!cortesBiblioteca.find(function(r){ return (r.operador+'|'+r.subestacion+'|'+r.circuito)===key; })) {
+        fromEvents.push({operador:ev.operador||'', subestacion:ev.subestacion, circuito:ev.circuito||'N/D', ciudad:ev.ciudad||'', veces:'auto', _auto:true});
+      }
+    }
+  });
+
+  var all = data.concat(_bibFiltro ? [] : fromEvents);
+  if(count) count.textContent = all.length + ' registros';
+
+  tbody.innerHTML = all.map(function(r, i){
+    var auto = r._auto;
+    return '<tr>'
+      +'<td>'+(r.operador||'—')+'</td>'
+      +'<td><strong>'+(r.subestacion||'—')+'</strong></td>'
+      +'<td>'+(r.circuito||'—')+'</td>'
+      +'<td>'+(r.ciudad||'—')+'</td>'
+      +'<td><span class="bib-badge">'+(r.veces||1)+'</span></td>'
+      +'<td>'+(auto?'<span style="color:var(--gm);font-size:.65rem">auto</span>':'<button class="btn btn-ghost btn-sm" style="font-size:.6rem;padding:1px 6px" onclick="eliminarBiblioteca('+i+')">✕</button>')+'</td>'
+      +'</tr>';
+  }).join('');
+}
+
+function actualizarDatalistsBib() {
+  var subs  = [...new Set(cortesBiblioteca.map(function(r){return r.subestacion;}).filter(Boolean))];
+  var circs = [...new Set(cortesBiblioteca.map(function(r){return r.circuito;}).filter(Boolean))];
+  var ops   = [...new Set(cortesBiblioteca.map(function(r){return r.operador;}).filter(Boolean))];
+
+  var dlSub  = document.getElementById('bib-subs-list');
+  var dlCir  = document.getElementById('bib-circs-list');
+  var dlOp   = document.getElementById('bib-ops-list');
+  if(dlSub)  dlSub.innerHTML  = subs.map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('');
+  if(dlCir)  dlCir.innerHTML  = circs.map(function(c){return '<option value="'+c+'">'+c+'</option>';}).join('');
+  if(dlOp)   dlOp.innerHTML   = ops.map(function(o){return '<option value="'+o+'">'+o+'</option>';}).join('');
+}
+
+function llenarFiltroSub() {
+  var fSub = document.getElementById('cortesFSub');
+  if(!fSub) return;
+  var subs = [...new Set(
+    cortesEventos.map(function(e){return e.subestacion;})
+    .concat(cortesBiblioteca.map(function(r){return r.subestacion;}))
+    .filter(function(s){return s && s!=='N/D';})
+  )].sort();
+  fSub.innerHTML = '<option value="">Todas</option>' + subs.map(function(s){
+    return '<option value="'+s+'">'+s+'</option>';
+  }).join('');
+}
+
+function exportarBiblioteca() {
+  var rows = [['Operador','Subestación','Circuito','Ciudad/Depto','Veces','Fecha']];
+  cortesBiblioteca.forEach(function(r){
+    rows.push([r.operador||'',r.subestacion||'',r.circuito||'',r.ciudad||'',r.veces||1,r.fecha||'']);
+  });
+  var csv = rows.map(function(r){return r.map(function(c){var s=String(c).replace(/"/g,'""');return s.includes(',')?'"'+s+'"':s;}).join(',');}).join('\n');
+  var blob = new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='Biblioteca_Cortes_'+new Date().toISOString().split('T')[0]+'.csv'; a.click();
+}
+
+// Alimentar biblioteca automáticamente cuando llegan eventos
+function alimentarBibDesdeEventos(eventos) {
+  var changed = false;
+  (eventos||[]).forEach(function(ev){
+    if(!ev.subestacion || ev.subestacion==='N/D') return;
+    var existing = cortesBiblioteca.find(function(r){
+      return r.subestacion===ev.subestacion && r.circuito===ev.circuito && r.operador===ev.operador;
+    });
+    if(existing) { existing.veces=(existing.veces||1)+1; changed=true; }
+    else {
+      cortesBiblioteca.push({operador:ev.operador||'',subestacion:ev.subestacion,circuito:ev.circuito||'',ciudad:ev.ciudad||'',veces:1,fecha:new Date().toLocaleDateString('es-CO')});
+      changed=true;
+    }
+  });
+  if(changed) { saveBiblioteca(); actualizarDatalistsBib(); llenarFiltroSub(); }
 }
 
 </script>
