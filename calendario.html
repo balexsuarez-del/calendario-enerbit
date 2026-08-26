@@ -762,8 +762,8 @@ textarea.fi{resize:vertical;min-height:60px}
           <input type="file" id="cortesFileInput" accept=".csv,.xlsx,.xls" onchange="procesarArchivoCortes(event)">
         </div>
         <div>
-          <label style="display:block;font-size:.68rem;color:var(--pd);margin-bottom:3px;font-weight:700">📤 Cargar EVENTOS al mapa (plantilla)</label>
-          <input type="file" id="cortesCargaEventosInput" accept=".xlsx,.xls" onchange="cargarEventosDesdeExcel(event)">
+          <label style="display:block;font-size:.68rem;color:var(--pd);margin-bottom:3px;font-weight:700">📤 Cargar EVENTOS al mapa (cualquier Excel/CSV)</label>
+          <input type="file" id="cortesCargaEventosInput" accept=".xlsx,.xls,.csv" onchange="cargarEventosDesdeExcel(event)">
         </div>
         <button class="btn btn-ghost btn-sm" onclick="cargarDatosCortes(true)">↻ Refrescar</button>
         <button class="btn btn-ghost btn-sm" onclick="toggleBibliotecaCortes()" id="btn-bib-cortes">📚 Biblioteca</button>
@@ -1346,48 +1346,172 @@ function reconciliarPorFechaJS(eventos, hoyStr) {
   return resultado;
 }
 
+// Normaliza encabezados: minúsculas, sin tildes, sin espacios sobrantes.
+function _normHeaderCortes(h) {
+  return String(h == null ? '' : h).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
+// Detecta la columna real del archivo que corresponde a un campo lógico,
+// probando una lista de sinónimos (coincidencia exacta primero, luego parcial).
+function _findColCortes(cols, colsNorm, sinonimos) {
+  for (var i = 0; i < sinonimos.length; i++) {
+    var idx = colsNorm.indexOf(sinonimos[i]);
+    if (idx !== -1) return cols[idx];
+  }
+  for (var i = 0; i < sinonimos.length; i++) {
+    var idx = colsNorm.findIndex(function(c){ return c.includes(sinonimos[i]); });
+    if (idx !== -1) return cols[idx];
+  }
+  return null;
+}
+
+// Lee cualquier CSV/XLSX/XLS y devuelve las filas (como objetos) de la
+// hoja con más datos, sin exigir un nombre de hoja específico.
+function _leerFilasArchivoCortes(file) {
+  return new Promise(function(resolve, reject) {
+    var ext = file.name.split('.').pop().toLowerCase();
+    var reader = new FileReader();
+    reader.onerror = function(){ reject(new Error('No se pudo leer el archivo')); };
+    reader.onload = function(e) {
+      try {
+        var wb;
+        if (ext === 'csv') {
+          var txt = e.target.result;
+          var line1 = (txt.split('\n')[0] || '');
+          var sep = ((line1.match(/;/g)||[]).length >= (line1.match(/,/g)||[]).length) ? ';' : ',';
+          wb = XLSX.read(txt, {type: 'string', FS: sep, raw: true});
+        } else {
+          wb = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
+        }
+        var best = wb.SheetNames[0], bestN = -1, bestRows = [];
+        wb.SheetNames.forEach(function(n) {
+          var r = XLSX.utils.sheet_to_json(wb.Sheets[n], {defval: '', raw: false});
+          if (r.length > bestN) { bestN = r.length; best = n; bestRows = r; }
+        });
+        resolve(bestRows);
+      } catch (err) { reject(err); }
+    };
+    if (ext === 'csv') reader.readAsText(file, 'utf-8');
+    else reader.readAsArrayBuffer(file);
+  });
+}
+
+// Cache de geocodificación por ciudad dentro de una misma carga, para no
+// repetir la misma consulta a Nominatim varias veces.
+var _geocacheCiudadCortes = {};
+async function _geocodificarCiudadCortes(ciudad) {
+  if (!ciudad) return null;
+  var key = ciudad.toLowerCase().trim();
+  if (_geocacheCiudadCortes[key] !== undefined) return _geocacheCiudadCortes[key];
+  try {
+    var q = encodeURIComponent(ciudad + ', Colombia');
+    var resp = await fetch('https://nominatim.openstreetmap.org/search?q=' + q + '&format=json&limit=1&countrycodes=co');
+    var data = await resp.json();
+    var res = (data && data.length > 0) ? {lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon)} : null;
+    _geocacheCiudadCortes[key] = res;
+    await new Promise(function(r){ setTimeout(r, 1100); }); // limite Nominatim 1 req/seg
+    return res;
+  } catch (err) {
+    _geocacheCiudadCortes[key] = null;
+    return null;
+  }
+}
+
 async function cargarEventosDesdeExcel(evt) {
   var file = evt.target.files[0];
   if (!file) return;
   var lbl = document.getElementById('cortes-actualizado');
   var panelResultado = document.getElementById('cortes-resultado');
+  var ext = file.name.split('.').pop().toLowerCase();
+  if (!['csv','xlsx','xls'].includes(ext)) {
+    panelResultado.innerHTML = '<p style="color:var(--rd)">Formato no soportado. Usa CSV, XLSX o XLS.</p>';
+    return;
+  }
   panelResultado.innerHTML = '<p style="color:var(--gm)">Leyendo archivo...</p>';
 
-  var reader = new FileReader();
-  reader.onload = async function(e) {
-    try {
-      var data = new Uint8Array(e.target.result);
-      var wb = XLSX.read(data, {type: 'array'});
-      var sheetName = wb.SheetNames.includes('Eventos') ? 'Eventos' : wb.SheetNames[0];
-      var sheet = wb.Sheets[sheetName];
-      var filas = XLSX.utils.sheet_to_json(sheet, {defval: ''});
+  try {
+      var filas = await _leerFilasArchivoCortes(file);
 
       if (filas.length === 0) {
-        panelResultado.innerHTML = '<p style="color:var(--rd)">El archivo no tiene filas de datos en la hoja "Eventos".</p>';
+        panelResultado.innerHTML = '<p style="color:var(--rd)">El archivo no tiene filas de datos.</p>';
         return;
       }
 
+      // ── Detección automática de columnas (sinónimos ES/EN, con/sin tildes) ──
+      var cols = Object.keys(filas[0]);
+      var colsNorm = cols.map(_normHeaderCortes);
+      var C = {
+        operador:  _findColCortes(cols, colsNorm, ['operador','operator','empresa','compania','proveedor','aliado']),
+        ciudad:    _findColCortes(cols, colsNorm, ['ciudad','municipio','city','localidad','departamento']),
+        lat:       _findColCortes(cols, colsNorm, ['lat','latitud','latitude']),
+        lng:       _findColCortes(cols, colsNorm, ['lng','lon','long','longitud','longitude']),
+        subestacion:_findColCortes(cols, colsNorm, ['subestacion','substation']),
+        circuito:  _findColCortes(cols, colsNorm, ['circuito','circuit','alimentador']),
+        inicio:    _findColCortes(cols, colsNorm, ['inicio','horainicio','desde','start']),
+        fin:       _findColCortes(cols, colsNorm, ['fin','horafin','hasta','end']),
+        barrios:   _findColCortes(cols, colsNorm, ['barrios','sectores','veredas','zonas','barrio','sector']),
+        detalle:   _findColCortes(cols, colsNorm, ['detalle','causa','motivo','descripcion','observacion','nota']),
+        fecha:     _findColCortes(cols, colsNorm, ['fechaevento','fecha','fechacorte','date']),
+        estado:    _findColCortes(cols, colsNorm, ['estado','status']),
+        fuente:    _findColCortes(cols, colsNorm, ['fuente','link','url','source']),
+      };
+
+      if (!C.operador || !C.ciudad) {
+        panelResultado.innerHTML = '<p style="color:var(--rd)">No se encontró columna de operador y/o ciudad. Columnas detectadas en el archivo: ' +
+          cols.join(', ') + '</p>';
+        return;
+      }
+
+      function normEstado(v) {
+        var s = _normHeaderCortes(v);
+        if (['pendiente','programado','programada'].includes(s)) return 'pendiente';
+        if (['resuelto','resuelta','restablecido','restablecida','normalizado','normalizada'].includes(s)) return 'resuelto';
+        if (['historico','historica'].includes(s)) return 'historico';
+        return 'activo';
+      }
+
+      var sinCoords = [];
       var nuevos = filas.map(function(fila) {
-        return {
-          operador: String(fila.operador || '').trim(),
-          ciudad: String(fila.ciudad || '').trim(),
-          lat: parseFloat(fila.lat) || 0,
-          lng: parseFloat(fila.lng) || 0,
-          subestacion: String(fila.subestacion || 'N/D').trim(),
-          circuito: String(fila.circuito || 'N/D').trim(),
-          inicio: String(fila.inicio || '—').trim(),
-          fin: String(fila.fin || '—').trim(),
-          barrios: String(fila.barrios || '').split(',').map(function(b){return b.trim();}).filter(Boolean),
-          detalle: String(fila.detalle || '').trim(),
-          fecha_reporte: String(fila.fecha_evento || '').trim(),
-          fecha_evento: String(fila.fecha_evento || '').trim(),
-          estado: ['activo','pendiente','resuelto'].includes(String(fila.estado||'').trim()) ? String(fila.estado).trim() : 'activo',
-          fuente: String(fila.fuente || '').trim(),
+        var lat = C.lat ? parseFloat(String(fila[C.lat]).replace(',','.')) : NaN;
+        var lng = C.lng ? parseFloat(String(fila[C.lng]).replace(',','.')) : NaN;
+        var fechaRaw = C.fecha ? String(fila[C.fecha] || '').trim() : '';
+        var fechaEv = parseFecha(fechaRaw) || fechaRaw;
+        var ev = {
+          operador: String(fila[C.operador] || '').trim(),
+          ciudad: String(fila[C.ciudad] || '').trim(),
+          lat: isNaN(lat) ? 0 : lat,
+          lng: isNaN(lng) ? 0 : lng,
+          subestacion: C.subestacion ? (String(fila[C.subestacion] || '').trim() || 'N/D') : 'N/D',
+          circuito: C.circuito ? (String(fila[C.circuito] || '').trim() || 'N/D') : 'N/D',
+          inicio: C.inicio ? (String(fila[C.inicio] || '').trim() || '—') : '—',
+          fin: C.fin ? (String(fila[C.fin] || '').trim() || '—') : '—',
+          barrios: C.barrios ? String(fila[C.barrios] || '').split(/[,;\/]/).map(function(b){return b.trim();}).filter(Boolean) : [],
+          detalle: C.detalle ? String(fila[C.detalle] || '').trim() : '',
+          fecha_reporte: fechaEv,
+          fecha_evento: fechaEv,
+          estado: C.estado ? normEstado(fila[C.estado]) : 'activo',
+          fuente: C.fuente ? String(fila[C.fuente] || '').trim() : '',
         };
+        if (!ev.lat || !ev.lng) sinCoords.push(ev);
+        return ev;
       }).filter(function(ev) { return ev.operador && ev.ciudad; });
 
       if (nuevos.length === 0) {
-        panelResultado.innerHTML = '<p style="color:var(--rd)">Ninguna fila tiene "operador" y "ciudad" completos. Revisa el formato contra la plantilla.</p>';
+        panelResultado.innerHTML = '<p style="color:var(--rd)">Ninguna fila tiene operador y ciudad completos.</p>';
+        return;
+      }
+
+      // Geocodificar por ciudad las filas sin lat/lng (usa cache, respeta límite de Nominatim)
+      if (sinCoords.length > 0) {
+        for (var gi = 0; gi < sinCoords.length; gi++) {
+          panelResultado.innerHTML = '<p style="color:var(--gm)">Geocodificando ' + (gi+1) + ' de ' + sinCoords.length + ' evento(s) sin coordenadas...</p>';
+          var g = await _geocodificarCiudadCortes(sinCoords[gi].ciudad);
+          if (g) { sinCoords[gi].lat = g.lat; sinCoords[gi].lng = g.lng; }
+        }
+      }
+      nuevos = nuevos.filter(function(ev){ return ev.lat && ev.lng; });
+      if (nuevos.length === 0) {
+        panelResultado.innerHTML = '<p style="color:var(--rd)">Ninguna fila quedó con coordenadas válidas (ni en el archivo ni por geocodificación de ciudad).</p>';
         return;
       }
 
@@ -1432,11 +1556,9 @@ async function cargarEventosDesdeExcel(evt) {
         alimentados + ' registro(s) enviados a la Biblioteca (traían circuito/subestación).</p>';
 
       cargarDatosCortes(false);
-    } catch (err) {
-      panelResultado.innerHTML = '<p style="color:var(--rd)">Error leyendo el archivo: ' + err.message + '</p>';
-    }
-  };
-  reader.readAsArrayBuffer(file);
+  } catch (err) {
+    panelResultado.innerHTML = '<p style="color:var(--rd)">Error leyendo el archivo: ' + err.message + '</p>';
+  }
 }
 
 async function limpiarEventosCortes() {
