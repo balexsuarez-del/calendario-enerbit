@@ -1690,7 +1690,23 @@ async function cargarDatosCortes(manual) {
   if(manual) lbl.textContent = 'Actualizando…';
   try {
     var data = await gasGet({action:'getCortes'});
-    cortesEventos = (data && data.eventos) ? data.eventos : [];
+    var crudos = (data && data.eventos) ? data.eventos : [];
+    // Recalcular el estado/color según la fecha REAL de cada evento cada
+    // vez que se leen los datos (no solo al importar un Excel). Así un
+    // evento marcado "activo" el día que se cargó pasa solo a gris
+    // cuando corresponda, sin depender de que alguien vuelva a subir un
+    // archivo para "refrescar" los colores.
+    var hoyStr = new Date().toISOString().slice(0, 10);
+    var estadosAntes = {};
+    crudos.forEach(function(e){ estadosAntes[claveEventoJS(e)] = e.estado; });
+    cortesEventos = reconciliarPorFechaJS(crudos, hoyStr);
+    var huboCambios = cortesEventos.length !== crudos.length ||
+      cortesEventos.some(function(e){ return estadosAntes[claveEventoJS(e)] !== e.estado; });
+    if (huboCambios) {
+      // Guardar en segundo plano el estado ya corregido, para que quede
+      // consistente en el Sheet para cualquiera que abra el calendario.
+      gasPost({action:'saveCortes', data: cortesEventos}).catch(function(){});
+    }
     alimentarBibDesdeEventos(cortesEventos);
     lbl.textContent = 'Actualizado: ' + (data && data.actualizado ? data.actualizado : new Date().toLocaleString('es-CO'));
     llenarFiltrosCortes();
