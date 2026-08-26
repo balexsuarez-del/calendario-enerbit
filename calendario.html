@@ -1366,7 +1366,43 @@ function _findColCortes(cols, colsNorm, sinonimos) {
 }
 
 // Lee cualquier CSV/XLSX/XLS y devuelve las filas (como objetos) de la
-// hoja con más datos, sin exigir un nombre de hoja específico.
+// hoja con más datos, sin exigir un nombre de hoja específico ni que el
+// encabezado esté en la primera fila (soporta títulos/banners arriba de
+// la tabla real, típicos de reportes exportados con una fila de título).
+function _filaEsEncabezado(fila) {
+  var noVacias = fila.filter(function(c){ return String(c||'').trim() !== ''; });
+  return noVacias.length >= 2;
+}
+
+function _filasDesdeAOA(aoa) {
+  // Busca, dentro de las primeras 10 filas, la que mejor pinta de encabezado:
+  // más celdas no vacías Y con más texto distinto de valores puramente numéricos.
+  var maxFilas = Math.min(aoa.length, 10);
+  var mejorIdx = -1, mejorScore = -1;
+  for (var i = 0; i < maxFilas; i++) {
+    var fila = aoa[i] || [];
+    var noVacias = fila.filter(function(c){ return String(c||'').trim() !== ''; });
+    if (noVacias.length < 2) continue;
+    var textoScore = noVacias.filter(function(c){ return isNaN(parseFloat(c)); }).length;
+    var score = noVacias.length + textoScore;
+    if (score > mejorScore) { mejorScore = score; mejorIdx = i; }
+  }
+  if (mejorIdx === -1) return [];
+  var headers = (aoa[mejorIdx] || []).map(function(h, idx) {
+    var s = String(h == null ? '' : h).trim();
+    return s || ('COL_' + idx);
+  });
+  var rows = [];
+  for (var r = mejorIdx + 1; r < aoa.length; r++) {
+    var fila = aoa[r] || [];
+    if (!_filaEsEncabezado(fila)) continue; // salta filas totalmente vacías
+    var obj = {};
+    headers.forEach(function(h, idx) { obj[h] = fila[idx] != null ? fila[idx] : ''; });
+    rows.push(obj);
+  }
+  return rows;
+}
+
 function _leerFilasArchivoCortes(file) {
   return new Promise(function(resolve, reject) {
     var ext = file.name.split('.').pop().toLowerCase();
@@ -1383,10 +1419,11 @@ function _leerFilasArchivoCortes(file) {
         } else {
           wb = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
         }
-        var best = wb.SheetNames[0], bestN = -1, bestRows = [];
+        var bestN = -1, bestRows = [];
         wb.SheetNames.forEach(function(n) {
-          var r = XLSX.utils.sheet_to_json(wb.Sheets[n], {defval: '', raw: false});
-          if (r.length > bestN) { bestN = r.length; best = n; bestRows = r; }
+          var aoa = XLSX.utils.sheet_to_json(wb.Sheets[n], {header: 1, defval: '', raw: false});
+          var r = _filasDesdeAOA(aoa);
+          if (r.length > bestN) { bestN = r.length; bestRows = r; }
         });
         resolve(bestRows);
       } catch (err) { reject(err); }
