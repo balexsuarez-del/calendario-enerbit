@@ -469,7 +469,9 @@ textarea.fi{resize:vertical;min-height:60px}
 .msb.no  { background:#FEE2E2;color:#991B1B; }
 .msb.way { background:#FEF3C7;color:#92400E; }
 
+
 </style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
 </head>
 <body>
 
@@ -496,7 +498,8 @@ textarea.fi{resize:vertical;min-height:60px}
       <div class="sync-dot" id="sync-dot"></div>
       <span id="sync-lbl">Sin datos</span>
     </div>
-    <button class="btn btn-primary btn-sm" onclick="document.getElementById('file-input').click()">⬆ Cargar Excel/CSV</button>
+    <button class="btn btn-ghost btn-sm" id="btn-cortes" onclick="toggleCortesOverlay()">⚡ Cortes<span id="cortes-badge" style="display:none;margin-left:5px;background:#DC2626;color:#fff;border-radius:50%;width:16px;height:16px;font-size:.6rem;align-items:center;justify-content:center;display:inline-flex"></span></button>
+<button class="btn btn-primary btn-sm" onclick="document.getElementById('file-input').click()">⬆ Cargar Excel/CSV</button>
     <input type="file" id="file-input" accept=".xlsx,.xls,.csv" onchange="onFileSelect(this.files[0])">
     <button class="btn btn-ghost btn-sm btn-hidden" id="btn-crear" onclick="openCreateOS()">+ Crear OS</button>
     <button class="btn btn-ghost btn-sm btn-hidden" id="btn-export" onclick="exportMonthPNG()">📷 Mes</button>
@@ -914,6 +917,59 @@ textarea.fi{resize:vertical;min-height:60px}
   </div>
 </div>
 
+<div class="overlay" id="cortes-overlay" style="display:none" onclick="if(event.target===this)toggleCortesOverlay()">
+  <div class="panel" id="cortes-panel" style="max-width:1100px;width:95vw;position:relative">
+    <div class="panel-hdr" id="cortes-panel-hdr" style="cursor:move;user-select:none">
+      <div style="flex:1">
+        <div class="panel-title">⚡ Cortes de energía — Colombia <span style="font-size:.65rem;font-weight:400;opacity:.7">(arrastra aquí para mover)</span></div>
+        <div class="panel-sub" id="cortes-actualizado">Cargando…</div>
+      </div>
+      <button class="panel-close" onclick="toggleCortesOverlay()">✕</button>
+    </div>
+    <div class="panel-body" style="padding:0">
+      <div style="padding:8px 16px;display:flex;gap:16px;align-items:center;font-size:.78rem;background:var(--card);border-bottom:1px solid var(--bd)">
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#DC2626;display:inline-block"></span> Activo</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#F59E0B;display:inline-block"></span> Pendiente (mañana)</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#059669;display:inline-block"></span> Resuelto</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#9CA3AF;display:inline-block"></span> Ayer (histórico)</span>
+        <span id="cortes-contador" style="color:var(--gm);margin-left:auto"></span>
+      </div>
+      <div style="padding:10px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;border-bottom:1px solid var(--bd);background:var(--card)">
+        <div>
+          <label style="display:block;font-size:.68rem;color:var(--gm);margin-bottom:3px">Operador</label>
+          <select id="cortesFOperador" class="fi" style="min-width:150px;padding:6px"><option value="">Todos</option></select>
+        </div>
+        <div>
+          <label style="display:block;font-size:.68rem;color:var(--gm);margin-bottom:3px">Circuito</label>
+          <select id="cortesFCircuito" class="fi" style="min-width:150px;padding:6px"><option value="">Todos</option></select>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <label style="display:block;font-size:.68rem;color:var(--gm);margin-bottom:3px">Verificar dirección/barrio</label>
+          <input type="text" id="cortesDireccion" class="fi" placeholder="Ej: Villa Hermosa, Cartagena" style="padding:6px;width:100%">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="verificarDireccionCortes()">Verificar</button>
+        <div>
+          <label style="display:block;font-size:.68rem;color:var(--gm);margin-bottom:3px">Subir archivo direcciones</label>
+          <input type="file" id="cortesFileInput" accept=".csv,.xlsx,.xls" onchange="procesarArchivoCortes(event)">
+        </div>
+        <div>
+          <label style="display:block;font-size:.68rem;color:var(--pd);margin-bottom:3px;font-weight:700">📤 Cargar EVENTOS al mapa (plantilla)</label>
+          <input type="file" id="cortesCargaEventosInput" accept=".xlsx,.xls" onchange="cargarEventosDesdeExcel(event)">
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="cargarDatosCortes(true)">↻ Refrescar</button>
+        <button class="btn btn-ghost btn-sm" onclick="limpiarEventosCortes()" style="color:var(--rd)">🧹 Limpiar eventos</button>
+        <a class="btn btn-ghost btn-sm" id="cortes-reporte-link" href="#" target="_blank" style="text-decoration:none;display:none">📄 Descargar reporte</a>
+      </div>
+      <div style="display:flex">
+        <div id="cortes-map" style="height:60vh;flex:1"></div>
+        <div id="cortes-panel" style="width:280px;border-left:1px solid var(--bd);padding:12px;overflow-y:auto;height:60vh;font-size:.8rem">
+          <div style="font-weight:700;color:var(--pd);margin-bottom:6px">Resultado</div>
+          <div id="cortes-resultado" style="color:var(--gm)">Filtra el mapa o verifica una dirección/archivo.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -3041,5 +3097,3088 @@ function importMatExcel(file) {
 
 </script>
 <!-- __D__ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js">
+function toggleCortesOverlay() {
+  var ov = document.getElementById('cortes-overlay');
+  var abrir = ov.style.display === 'none';
+  ov.style.display = abrir ? 'flex' : 'none';
+  if(abrir){
+    if(!cortesMap) initCortesMap();
+    cargarDatosCortes(false);
+    cargarUltimoReporte();
+    inicializarArrastreCortes();
+    restaurarPosicionCortes();
+  }
+}
+
+// ── Ventana arrastrable (mover el panel de Cortes libremente) ────────
+var cortesArrastreListo = false;
+function inicializarArrastreCortes() {
+  if (cortesArrastreListo) return; // solo enganchar los listeners una vez
+  cortesArrastreListo = true;
+  var panel = document.getElementById('cortes-panel');
+  var handle = document.getElementById('cortes-panel-hdr');
+  var arrastrando = false, offsetX = 0, offsetY = 0;
+
+  handle.addEventListener('mousedown', function(e) {
+    if (e.target.closest('.panel-close')) return; // no arrastrar si clic en cerrar
+    arrastrando = true;
+    var rect = panel.getBoundingClientRect();
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
+    panel.style.position = 'fixed';
+    panel.style.margin = '0';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!arrastrando) return;
+    var x = e.clientX - offsetX;
+    var y = e.clientY - offsetY;
+    // Evitar que se salga completamente de la pantalla
+    x = Math.max(-panel.offsetWidth + 80, Math.min(x, window.innerWidth - 80));
+    y = Math.max(0, Math.min(y, window.innerHeight - 40));
+    panel.style.left = x + 'px';
+    panel.style.top = y + 'px';
+  });
+
+  document.addEventListener('mouseup', function() {
+    if (!arrastrando) return;
+    arrastrando = false;
+    document.body.style.userSelect = '';
+    try {
+      var rect = panel.getBoundingClientRect();
+      localStorage.setItem('cortesPanelPos', JSON.stringify({left: rect.left, top: rect.top}));
+    } catch(e) {}
+  });
+}
+
+function restaurarPosicionCortes() {
+  try {
+    var guardada = localStorage.getItem('cortesPanelPos');
+    if (!guardada) return;
+    var pos = JSON.parse(guardada);
+    var panel = document.getElementById('cortes-panel');
+    // Verificar que la posicion guardada siga siendo visible (evita que
+    // quede "perdido" fuera de pantalla si cambiaste de resolucion)
+    if (pos.left < -panel.offsetWidth + 80 || pos.left > window.innerWidth - 80) return;
+    if (pos.top < 0 || pos.top > window.innerHeight - 40) return;
+    panel.style.position = 'fixed';
+    panel.style.margin = '0';
+    panel.style.left = pos.left + 'px';
+    panel.style.top = pos.top + 'px';
+  } catch(e) {}
+}
+
+function initCortesMap() {
+  cortesMap = L.map('cortes-map').setView([5.5, -74.5], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap', maxZoom: 18
+  }).addTo(cortesMap);
+}
+
+function claveEventoJS(ev) {
+  return (ev.operador || '').trim().toLowerCase() + '|' + (ev.ciudad || '').trim().toLowerCase();
+}
+
+function reconciliarPorFechaJS(eventos, hoyStr) {
+  var ayerStr = new Date(new Date(hoyStr + 'T00:00:00').getTime() - 86400000).toISOString().slice(0, 10);
+  var resultado = [];
+  eventos.forEach(function(ev) {
+    var fechaEv = (ev.fecha_evento || ev.fecha_reporte || '').slice(0, 10);
+    if (fechaEv && fechaEv < ayerStr) return; // mas viejo que ayer, se descarta
+    if (fechaEv === ayerStr) ev.estado = 'historico'; // de ayer: se conserva en gris, no se borra
+    else if (fechaEv === hoyStr && ev.estado === 'pendiente') ev.estado = 'activo';
+    resultado.push(ev);
+  });
+  return resultado;
+}
+
+async function cargarEventosDesdeExcel(evt) {
+  var file = evt.target.files[0];
+  if (!file) return;
+  var lbl = document.getElementById('cortes-actualizado');
+  var panelResultado = document.getElementById('cortes-resultado');
+  panelResultado.innerHTML = '<p style="color:var(--gm)">Leyendo archivo...</p>';
+
+  var reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, {type: 'array'});
+      var sheetName = wb.SheetNames.includes('Eventos') ? 'Eventos' : wb.SheetNames[0];
+      var sheet = wb.Sheets[sheetName];
+      var filas = XLSX.utils.sheet_to_json(sheet, {defval: ''});
+
+      if (filas.length === 0) {
+        panelResultado.innerHTML = '<p style="color:var(--rd)">El archivo no tiene filas de datos en la hoja "Eventos".</p>';
+        return;
+      }
+
+      var nuevos = filas.map(function(fila) {
+        return {
+          operador: String(fila.operador || '').trim(),
+          ciudad: String(fila.ciudad || '').trim(),
+          lat: parseFloat(fila.lat) || 0,
+          lng: parseFloat(fila.lng) || 0,
+          subestacion: String(fila.subestacion || 'N/D').trim(),
+          circuito: String(fila.circuito || 'N/D').trim(),
+          inicio: String(fila.inicio || '—').trim(),
+          fin: String(fila.fin || '—').trim(),
+          barrios: String(fila.barrios || '').split(',').map(function(b){return b.trim();}).filter(Boolean),
+          detalle: String(fila.detalle || '').trim(),
+          fecha_reporte: String(fila.fecha_evento || '').trim(),
+          fecha_evento: String(fila.fecha_evento || '').trim(),
+          estado: ['activo','pendiente','resuelto'].includes(String(fila.estado||'').trim()) ? String(fila.estado).trim() : 'activo',
+          fuente: String(fila.fuente || '').trim(),
+        };
+      }).filter(function(ev) { return ev.operador && ev.ciudad; });
+
+      if (nuevos.length === 0) {
+        panelResultado.innerHTML = '<p style="color:var(--rd)">Ninguna fila tiene "operador" y "ciudad" completos. Revisa el formato contra la plantilla.</p>';
+        return;
+      }
+
+      lbl.textContent = 'Aplicando ' + nuevos.length + ' evento(s)...';
+
+      // 1. Traer lo actual y reconciliar por fecha
+      var actualesResp = await gasGet({action: 'getCortes'});
+      var actuales = (actualesResp && actualesResp.eventos) ? actualesResp.eventos : [];
+      var hoyStr = new Date().toISOString().slice(0, 10);
+      var reconciliados = reconciliarPorFechaJS(actuales, hoyStr);
+
+      // 2. Fusionar (lo nuevo reemplaza por clave operador+ciudad)
+      var fusion = {};
+      reconciliados.forEach(function(ev) { fusion[claveEventoJS(ev)] = ev; });
+      nuevos.forEach(function(ev) { fusion[claveEventoJS(ev)] = ev; });
+      var listaFinal = Object.values(fusion);
+
+      // 3. Guardar
+      var resultado = await gasPost({action: 'saveCortes', data: listaFinal});
+      if (!resultado || !resultado.ok) {
+        panelResultado.innerHTML = '<p style="color:var(--rd)">Error al guardar: ' + (resultado && resultado.error ? resultado.error : 'desconocido') + '</p>';
+        return;
+      }
+
+      // 4. Alimentar la Biblioteca para los que traigan circuito/subestacion real
+      var alimentados = 0;
+      for (var i = 0; i < nuevos.length; i++) {
+        var ev = nuevos[i];
+        if (ev.circuito !== 'N/D' || ev.subestacion !== 'N/D') {
+          await gasPost({
+            action: 'actualizarBiblioteca',
+            operador: ev.operador, departamento: ev.ciudad,
+            subestacion: ev.subestacion, circuito: ev.circuito,
+            barrios_nuevos: ev.barrios, fecha: ev.fecha_evento, fuente: ev.fuente
+          });
+          alimentados++;
+        }
+      }
+
+      panelResultado.innerHTML = '<p style="color:var(--gn);font-weight:700">✓ Carga exitosa</p>' +
+        '<p>' + nuevos.length + ' evento(s) del archivo aplicados. Total en el mapa: ' + listaFinal.length + '.<br>' +
+        alimentados + ' registro(s) enviados a la Biblioteca (traían circuito/subestación).</p>';
+
+      cargarDatosCortes(false);
+    } catch (err) {
+      panelResultado.innerHTML = '<p style="color:var(--rd)">Error leyendo el archivo: ' + err.message + '</p>';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function limpiarEventosCortes() {
+  if (!confirm('¿Seguro que quieres borrar TODOS los eventos del mapa de Cortes? Esta acción no se puede deshacer. La Biblioteca de subestaciones/circuitos NO se toca, solo los eventos activos/pendientes/resueltos.')) {
+    return;
+  }
+  var lbl = document.getElementById('cortes-actualizado');
+  lbl.textContent = 'Borrando eventos...';
+  try {
+    var resultado = await gasPost({action: 'saveCortes', data: []});
+    if (resultado && resultado.ok) {
+      cortesEventos = [];
+      llenarFiltrosCortes();
+      pintarCortes('', '');
+      document.getElementById('cortes-contador').textContent = '0 activos · 0 pendientes · 0 resueltos';
+      document.getElementById('cortes-badge').style.display = 'none';
+      lbl.textContent = 'Eventos borrados. Actualizado: ' + new Date().toLocaleString('es-CO');
+    } else {
+      lbl.textContent = 'Error al borrar: ' + (resultado && resultado.error ? resultado.error : 'desconocido');
+    }
+  } catch(e) {
+    lbl.textContent = 'Error al borrar eventos: ' + e.message;
+  }
+}
+
+async function cargarDatosCortes(manual) {
+  var lbl = document.getElementById('cortes-actualizado');
+  if(manual) lbl.textContent = 'Actualizando…';
+  try {
+    var data = await gasGet({action:'getCortes'});
+    cortesEventos = (data && data.eventos) ? data.eventos : [];
+    lbl.textContent = 'Actualizado: ' + (data && data.actualizado ? data.actualizado : new Date().toLocaleString('es-CO'));
+    llenarFiltrosCortes();
+    pintarCortes('', '');
+    var activos = cortesEventos.filter(e => (e.estado||'activo')==='activo').length;
+    var pendientes = cortesEventos.filter(e => e.estado==='pendiente').length;
+    var resueltos = cortesEventos.filter(e => e.estado==='resuelto').length;
+    var historicos = cortesEventos.filter(e => e.estado==='historico').length;
+    document.getElementById('cortes-contador').textContent = activos + ' activos · ' + pendientes + ' pendientes · ' + resueltos + ' resueltos · ' + historicos + ' de ayer';
+    var badge = document.getElementById('cortes-badge');
+    if(activos > 0){ badge.style.display='inline-flex'; badge.textContent = activos; }
+    else badge.style.display = 'none';
+  } catch(e) {
+    lbl.textContent = 'Sin conexión al backend de cortes (revisa GAS_URL / acción getCortes)';
+  }
+}
+
+function llenarFiltrosCortes() {
+  var fOp = document.getElementById('cortesFOperador');
+  var fCirc = document.getElementById('cortesFCircuito');
+  var ops = [...new Set(cortesEventos.map(e => e.operador))];
+  var circs = [...new Set(cortesEventos.map(e => e.circuito).filter(c => c && c !== 'N/D'))];
+  fOp.innerHTML = '<option value="">Todos</option>' + ops.map(o=>'<option value="'+o+'">'+o+'</option>').join('');
+  fCirc.innerHTML = '<option value="">Todos</option>' + circs.map(c=>'<option value="'+c+'">'+c+'</option>').join('');
+  fOp.onchange = fCirc.onchange = function(){ pintarCortes(fOp.value, fCirc.value); };
+}
+
+function iconoTriangulo(color) {
+  var html = '<div style="position:relative;width:30px;height:28px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))">' +
+    '<svg width="30" height="28" viewBox="0 0 30 28" xmlns="http://www.w3.org/2000/svg">' +
+    '<polygon points="15,1 29,26 1,26" fill="' + color + '" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>' +
+    '</svg>' +
+    '<span style="position:absolute;top:11px;left:0;width:30px;text-align:center;font-size:13px;line-height:1;color:#fff;pointer-events:none">⚡</span>' +
+    '</div>';
+  return L.divIcon({ html: html, className: '', iconSize: [30, 28], iconAnchor: [15, 26], popupAnchor: [0, -24] });
+}
+
+// ── Auto-transicion de estado por hora de fin (calculado en el navegador) ──
+function claveEventoLocal(e) {
+  return (e.operador||'').trim().toLowerCase() + '|' + (e.ciudad||'').trim().toLowerCase();
+}
+
+function parsearHoraTexto(texto, fechaBase) {
+  if (!texto) return null;
+  var matches = texto.match(/(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?/gi);
+  if (!matches || matches.length === 0) return null;
+  var ultima = matches[matches.length - 1]; // si es un rango, toma la hora final
+  var m = ultima.match(/(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?/i);
+  if (!m) return null;
+  var h = parseInt(m[1], 10), min = parseInt(m[2], 10);
+  var esPM = m[3] && /p/i.test(m[3]);
+  var esAM = m[3] && /a/i.test(m[3]);
+  if (esPM && h < 12) h += 12;
+  if (esAM && h === 12) h = 0;
+  var d = new Date(fechaBase);
+  d.setHours(h, min, 0, 0);
+  return d;
+}
+
+function obtenerFinDate(e) {
+  var base = e.fecha_evento ? new Date(e.fecha_evento + 'T00:00:00') : new Date();
+  return parsearHoraTexto(e.fin, base);
+}
+
+function getOverrideContinua(key) {
+  try { var raw = localStorage.getItem('cortesContinua_' + key); return raw ? JSON.parse(raw) : null; }
+  catch(err) { return null; }
+}
+function setOverrideContinua(key, finISO) {
+  try { localStorage.setItem('cortesContinua_' + key, JSON.stringify({fin: finISO, ts: Date.now()})); } catch(err) {}
+}
+function getPrimeraDeteccion(key) {
+  try { var raw = localStorage.getItem('cortesDetectado_' + key); return raw ? JSON.parse(raw) : null; }
+  catch(err) { return null; }
+}
+function setPrimeraDeteccion(key, finISO) {
+  try { localStorage.setItem('cortesDetectado_' + key, JSON.stringify({fin: finISO, ts: Date.now()})); } catch(err) {}
+}
+
+function marcarContinua(key, finISO) {
+  setOverrideContinua(key, finISO);
+  var fOp = document.getElementById('cortesFOperador').value;
+  var fCirc = document.getElementById('cortesFCircuito').value;
+  pintarCortes(fOp, fCirc);
+}
+
+function pintarCortes(filtroOp, filtroCirc) {
+  cortesMarkers.forEach(m => cortesMap.removeLayer(m));
+  cortesMarkers = [];
+  if(cortesSubMarkers) cortesSubMarkers.forEach(m => cortesMap.removeLayer(m));
+  cortesSubMarkers = [];
+  if(cortesAreaLayer) { cortesMap.removeLayer(cortesAreaLayer); cortesAreaLayer = null; }
+  cortesEventos.forEach((e, idx) => {
+    if(filtroOp && e.operador !== filtroOp) return;
+    if(filtroCirc && e.circuito !== filtroCirc) return;
+
+    var key = claveEventoLocal(e);
+    var estado = e.estado || 'activo';
+    var esAutoResuelto = false;
+    var finDate = null;
+
+    if (estado === 'activo') {
+      finDate = obtenerFinDate(e);
+      if (finDate && Date.now() > finDate.getTime()) {
+        var finISO = finDate.toISOString();
+        var override = getOverrideContinua(key);
+        var siguoConfirmado = override && override.fin === finISO;
+        if (!siguoConfirmado) {
+          var detectado = getPrimeraDeteccion(key);
+          if (!detectado || detectado.fin !== finISO) {
+            setPrimeraDeteccion(key, finISO);
+            detectado = {fin: finISO, ts: Date.now()};
+          }
+          // A los 10 minutos de detectado como resuelto, se oculta del mapa
+          if (Date.now() - detectado.ts > 10 * 60 * 1000) return;
+          estado = 'resuelto';
+          esAutoResuelto = true;
+        }
+      }
+    }
+
+    var color = estado === 'historico' ? '#9CA3AF' : (estado === 'resuelto' ? '#059669' : (estado === 'pendiente' ? '#F59E0B' : '#DC2626'));
+    var etiquetaEstado = estado === 'historico' ? 'AYER (histórico)' : (estado === 'resuelto' ? (esAutoResuelto ? 'RESUELTO (auto)' : 'RESUELTO') : (estado === 'pendiente' ? 'PENDIENTE' : 'ACTIVO'));
+    var hoyStr = new Date().toISOString().slice(0,10);
+    var mananaStr = new Date(Date.now() + 86400000).toISOString().slice(0,10);
+    var fechaEv = (e.fecha_evento || '').slice(0,10);
+    var etiquetaFecha = fechaEv === hoyStr ? 'HOY' : (fechaEv === mananaStr ? 'MAÑANA' : fechaEv);
+    var m = L.marker([e.lat, e.lng], {icon: iconoTriangulo(color)}).addTo(cortesMap);
+    var idPopup = 'cortes-barrios-btn-' + idx;
+    var idContinua = 'cortes-continua-btn-' + idx;
+    var botonContinua = esAutoResuelto
+      ? '<button id="'+idContinua+'" style="margin-top:6px;margin-left:6px;background:#DC2626;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer">⚠ ¿Aún continúa?</button>'
+      : '';
+    m.bindPopup(
+      '<span style="display:inline-block;padding:1px 8px;border-radius:8px;font-size:11px;font-weight:700;color:#fff;background:'+color+'">'+etiquetaEstado+'</span> '+
+      '<span style="display:inline-block;padding:1px 8px;border-radius:8px;font-size:11px;font-weight:700;color:#fff;background:#7028AE;margin-left:4px">'+etiquetaFecha+'</span><br>'+
+      '<b>'+e.operador+'</b> — '+e.ciudad+'<br>'+
+      'Subestación: '+(e.subestacion||'N/D')+'<br>'+
+      'Circuito: '+(e.circuito||'N/D')+'<br>'+
+      'Horario: '+(e.inicio||'—')+' – '+(e.fin||'—')+'<br>'+
+      'Barrios: '+(e.barrios||[]).join(', ')+'<br>'+
+      '<span style="color:#6B7280">'+(e.detalle||'')+'</span><br>'+
+      (esAutoResuelto ? '<span style="color:var(--am);font-size:11px">Marcado como resuelto automaticamente al pasar la hora de fin. Se ocultara del mapa en 10 min si nadie confirma que continua.</span><br>' : '')+
+      '<button id="'+idPopup+'" style="margin-top:6px;background:#501C7C;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer">📍 Ver barrios en el mapa</button>'+botonContinua
+    );
+    m.on('click', function() {
+      cortesMap.flyTo([e.lat, e.lng], 13, {duration: 0.8});
+    });
+    m.on('popupopen', function() {
+      var btn = document.getElementById(idPopup);
+      if(btn) btn.onclick = function() { ubicarBarriosEnMapa(e); };
+      var btnContinua = document.getElementById(idContinua);
+      if(btnContinua) btnContinua.onclick = function() { marcarContinua(key, finDate ? finDate.toISOString() : ''); };
+    });
+    cortesMarkers.push(m);
+  });
+}
+
+var cortesAreaLayer = null;
+
+// Envolvente convexa (monotone chain) - recibe [[lat,lng],...] y
+// devuelve los puntos del contorno que delimitan el area, en orden.
+function envolventeConvexa(puntos) {
+  if (puntos.length < 3) return puntos;
+  var pts = puntos.slice().sort(function(a, b) { return a[0] - b[0] || a[1] - b[1]; });
+  function cruz(o, a, b) { return (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]); }
+  var inferior = [];
+  for (var i = 0; i < pts.length; i++) {
+    while (inferior.length >= 2 && cruz(inferior[inferior.length-2], inferior[inferior.length-1], pts[i]) <= 0) inferior.pop();
+    inferior.push(pts[i]);
+  }
+  var superior = [];
+  for (var i = pts.length - 1; i >= 0; i--) {
+    while (superior.length >= 2 && cruz(superior[superior.length-2], superior[superior.length-1], pts[i]) <= 0) superior.pop();
+    superior.push(pts[i]);
+  }
+  inferior.pop(); superior.pop();
+  return inferior.concat(superior);
+}
+
+async function ubicarBarriosEnMapa(evento) {
+  cortesSubMarkers.forEach(m => cortesMap.removeLayer(m));
+  cortesSubMarkers = [];
+  if (cortesAreaLayer) { cortesMap.removeLayer(cortesAreaLayer); cortesAreaLayer = null; }
+  var estado = evento.estado || 'activo';
+  var colorArea = estado === 'resuelto' ? '#059669' : (estado === 'pendiente' ? '#F59E0B' : '#DC2626');
+  var barrios = evento.barrios || [];
+  var bounds = [];
+  for(var i = 0; i < barrios.length; i++) {
+    var b = barrios[i];
+    try {
+      var query = encodeURIComponent(b + ', ' + evento.ciudad + ', Colombia');
+      var resp = await fetch('https://nominatim.openstreetmap.org/search?q=' + query + '&format=json&limit=1&countrycodes=co');
+      var data = await resp.json();
+      if(data && data.length > 0) {
+        var lat = parseFloat(data[0].lat), lon = parseFloat(data[0].lon);
+        var sm = L.circleMarker([lat, lon], {radius:7, fillColor:'#7028AE', color:'#fff', weight:2, fillOpacity:0.85}).addTo(cortesMap);
+        sm.bindPopup('<b>'+b+'</b><br><span style="color:#6B7280">'+evento.operador+' — '+evento.ciudad+'</span>');
+        cortesSubMarkers.push(sm);
+        bounds.push([lat, lon]);
+      }
+      await new Promise(r => setTimeout(r, 1100)); // respetar limite de 1 req/seg de Nominatim
+    } catch(err) {
+      console.log('No se pudo geocodificar:', b, err);
+    }
+  }
+  if(bounds.length >= 3) {
+    var contorno = envolventeConvexa(bounds);
+    cortesAreaLayer = L.polygon(contorno, {
+      color: colorArea, weight: 2, fillColor: colorArea, fillOpacity: 0.18, dashArray: '6,4'
+    }).addTo(cortesMap);
+    cortesAreaLayer.bindTooltip('Área afectada aproximada — ' + evento.operador + ' / ' + evento.ciudad, {sticky: true});
+    cortesMap.flyToBounds(bounds, {padding:[40,40], maxZoom:15, duration:1});
+  } else if(bounds.length > 0) {
+    // Con 1-2 puntos no hay area que delimitar con poligono; dibuja un
+    // circulo aproximado como referencia visual del radio de afectacion.
+    var centro = bounds[0];
+    cortesAreaLayer = L.circle(centro, {
+      radius: 800, color: colorArea, weight: 2, fillColor: colorArea, fillOpacity: 0.15, dashArray: '6,4'
+    }).addTo(cortesMap);
+    cortesAreaLayer.bindTooltip('Área afectada aproximada — ' + evento.operador + ' / ' + evento.ciudad, {sticky: true});
+    cortesMap.flyToBounds(bounds, {padding:[60,60], maxZoom:15, duration:1});
+  } else {
+    document.getElementById('cortes-resultado').innerHTML =
+      '<p style="color:var(--am)">No se pudo ubicar ningun barrio de esta lista en el mapa (nombres muy genericos o no encontrados en OpenStreetMap).</p>';
+  }
+}
+
+function buscarCoincidenciaCortes(texto) {
+  var t = texto.toLowerCase();
+  for(var e of cortesEventos){
+    for(var b of (e.barrios||[])){
+      if(t.includes(b.toLowerCase()) || b.toLowerCase().includes(t)) return e;
+    }
+    if(e.ciudad && t.includes(e.ciudad.toLowerCase().split(' ')[0])) return e;
+  }
+  return null;
+}
+
+function verificarDireccionCortes() {
+  var val = document.getElementById('cortesDireccion').value.trim();
+  if(!val) return;
+  var match = buscarCoincidenciaCortes(val);
+  var panel = document.getElementById('cortes-resultado');
+  if(cortesAddrMarker){ cortesMap.removeLayer(cortesAddrMarker); cortesAddrMarker = null; }
+  if(match){
+    panel.innerHTML = '<p style="color:var(--rd);font-weight:700">⚠ Posiblemente afectada</p>'+
+      '<p><b>'+val+'</b> coincide con reporte de <b>'+match.operador+'</b> en '+match.ciudad+'.</p>'+
+      '<p>Subestación: '+(match.subestacion||'N/D')+'<br>Circuito: '+(match.circuito||'N/D')+'<br>Horario: '+(match.inicio||'—')+' – '+(match.fin||'—')+'</p>';
+    cortesAddrMarker = L.circleMarker([match.lat, match.lng], {radius:15, fillColor:'#DC2626', color:'#fff', weight:3, fillOpacity:0.9}).addTo(cortesMap);
+    cortesMap.setView([match.lat, match.lng], 10);
+  } else {
+    panel.innerHTML = '<p style="color:var(--gn);font-weight:700">✓ Sin coincidencia</p><p>No se encontró "<b>'+val+'</b>" en los reportes actuales. Esto no garantiza servicio activo, solo que no aparece en los reportes.</p>';
+  }
+}
+
+function procesarArchivoCortes(evt) {
+  var file = evt.target.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var data = new Uint8Array(e.target.result);
+    var wb = XLSX.read(data, {type:'array'});
+    var sheet = wb.Sheets[wb.SheetNames[0]];
+    var rows = XLSX.utils.sheet_to_json(sheet, {header:1});
+    var out = '<table style="width:100%;font-size:.75rem"><tr><th style="text-align:left">Dirección</th><th style="text-align:left">Estado</th></tr>';
+    rows.flat().forEach(function(val){
+      if(!val || typeof val !== 'string') return;
+      var match = buscarCoincidenciaCortes(val);
+      out += '<tr><td>'+val+'</td><td style="color:'+(match?'var(--rd)':'var(--gn)')+';font-weight:600">'+(match ? 'Afectada ('+match.operador+')' : 'Sin coincidencia')+'</td></tr>';
+    });
+    out += '</table>';
+    document.getElementById('cortes-resultado').innerHTML = out;
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Refresco automático cada hora si el overlay de cortes está abierto o en segundo plano
+setInterval(function(){
+  var ov = document.getElementById('cortes-overlay');
+  if(ov) cargarDatosCortes(false);
+}, 60 * 60 * 1000);
+
+// Repintado cada 30s (solo si el overlay esta visible) para que la
+// auto-transicion a "resuelto" y el auto-ocultado a los 10 min ocurran
+// solos, sin depender de que alguien refresque manualmente.
+setInterval(function(){
+  var ov = document.getElementById('cortes-overlay');
+  if(ov && ov.style.display !== 'none' && cortesMap) {
+    var fOp = document.getElementById('cortesFOperador').value;
+    var fCirc = document.getElementById('cortesFCircuito').value;
+    pintarCortes(fOp, fCirc);
+  }
+}, 30 * 1000);
+
+// ── SINCRONIZACIÓN DEL DATASET COMPLETO (Google Sheets = fuente compartida) ──
+// El Apps Script ya soporta guardar/traer TODO el listado de OS (acciones
+// 'saveOS' y 'getOS'), pero antes el calendario solo usaba 'getChanges'
+// (sincroniza notas/estado puntuales, nunca el archivo completo). Estas
+// funciones cierran ese hueco: al cargar un Excel se sube todo a Sheets, y
+// cualquiera que abra el calendario (o siga con él abierto) recibe esa
+// misma base compartida, no solo lo que cargó en su propio navegador.
+
+function mapEvToGasRow(ev, fecha) {
+  return {
+    order_id: ev.oid||'', assignee_id: ev.aid||'',
+    fecha: fecha || ev.fecha || '', hora: ev.ti||'',
+    estado: ev.st||'', estado_manual: ev.em_m||'',
+    city: ev.ci||'', state: ev.sta||'',
+    type_code: ev.tc||'', type_name: ev.tn||'',
+    operator: ev.op||'', email: ev.em||'',
+    aliado: ev.al||'', tecnico: ev.tec||'',
+    dir: ev.dir||'', cert: ev.cert||'',
+    description: ev.des||'', obs: ev.obs||'',
+    cancel_reason: ev.cr||'', cancel_obs: ev.co||'',
+    nota_manual: ev.nt_m||'', material_estado: ev.mat||''
+  };
+}
+
+function normalizeFechaFromGAS(raw) {
+  if(!raw) return '';
+  var s = String(raw).trim();
+  var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return m[1]+'-'+m[2]+'-'+m[3];
+  // Google Sheets puede haber convertido el texto a su propio tipo Fecha;
+  // al leerlo vuelve como algo tipo "Tue Jul 21 2026 00:00:00 GMT-0500 (...)".
+  // Parsearlo como Date y reformatear con dateKey (usa la fecha LOCAL, no UTC).
+  var d = new Date(s);
+  if(!isNaN(d.getTime())) return dateKey(d);
+  return '';
+}
+
+function mapGasRowToEv(row) {
+  var oid = row.order_id||'';
+  return {
+    oid: oid, aid: row.assignee_id || (oid+'-a'),
+    fecha: normalizeFechaFromGAS(row.fecha),
+    st: row.estado||'pending', em_m: row.estado_manual||'',
+    ci: row.city||'', sta: row.state||'',
+    tc: row.type_code||'', tn: row.type_name||row.type_code||'',
+    op: row.operator||'', em: row.email||'',
+    al: row.aliado || getAliado(row.email||''),
+    tec: row.tecnico || row.operator || '',
+    dir: row.dir||'', cert: row.cert||'',
+    des: row.description||'', obs: row.obs||'',
+    cr: row.cancel_reason||'', co: row.cancel_obs||'',
+    ti: row.hora||'', nt_m: row.nota_manual||'', mat: row.material_estado||''
+  };
+}
+
+// Sube TODO el dataset actual (osIdx) a Google Sheets. saveOS reemplaza el
+// contenido completo de la hoja, así que siempre hay que mandar todo junto
+// (no por lotes) para no perder lo que ya estaba compartido.
+async function pushFullDatasetToGAS() {
+  var all = [];
+  Object.entries(osIdx).forEach(function(entry) {
+    var fecha = entry[0];
+    entry[1].forEach(function(ev) {
+      if(ev.oid) all.push(mapEvToGasRow(ev, fecha));
+    });
+  });
+  if(!all.length) return false;
+  try {
+    var res = await gasPost({action:'saveOS', data: all});
+    return !!(res && res.ok);
+  } catch(e) {
+    console.warn('No se pudo subir el dataset completo a Google Sheets:', e);
+    return false;
+  }
+}
+
+// Trae TODO el dataset compartido de Google Sheets y REEMPLAZA osIdx (uso: al
+// abrir el calendario por primera vez, cuando aún no hay nada local).
+async function pullFullDatasetFromGAS() {
+  try {
+    var data = await gasGet({action:'getOS'});
+    if(data && data.ok && data.data && data.data.length) {
+      var newIdx = {};
+      data.data.forEach(function(row) {
+        var ev = mapGasRowToEv(row);
+        if(!ev.oid || !ev.fecha) return;
+        if(!newIdx[ev.fecha]) newIdx[ev.fecha] = [];
+        newIdx[ev.fecha].push(ev);
+      });
+      if(Object.keys(newIdx).length) { osIdx = newIdx; return true; }
+    }
+  } catch(e) {
+    console.warn('No se pudo traer el dataset completo de Google Sheets:', e);
+  }
+  return false;
+}
+
+// Trae el dataset de Google Sheets y lo FUSIONA con lo que ya está en pantalla
+// (agrega OS nuevas que otros hayan cargado, actualiza las existentes) sin
+// perder nada que este navegador tenga localmente. Uso: refresco periódico.
+async function mergeFullDatasetFromGAS() {
+  try {
+    var data = await gasGet({action:'getOS'});
+    if(!(data && data.ok && data.data)) return;
+    var byKey = {};
+    Object.entries(osIdx).forEach(function(entry) {
+      var fecha = entry[0];
+      entry[1].forEach(function(ev) { byKey[ev.oid+'|'+ev.aid] = {ev:ev, fecha:fecha}; });
+    });
+    var added = 0;
+    data.data.forEach(function(row) {
+      var mapped = mapGasRowToEv(row);
+      if(!mapped.oid || !mapped.fecha) return;
+      var key = mapped.oid+'|'+mapped.aid;
+      var found = byKey[key];
+      if(!found) {
+        if(!osIdx[mapped.fecha]) osIdx[mapped.fecha] = [];
+        osIdx[mapped.fecha].push(mapped);
+        added++;
+      } else if(found.fecha !== mapped.fecha) {
+        var oldArr = osIdx[found.fecha];
+        if(oldArr) osIdx[found.fecha] = oldArr.filter(function(e){ return e!==found.ev; });
+        Object.assign(found.ev, mapped);
+        if(!osIdx[mapped.fecha]) osIdx[mapped.fecha] = [];
+        osIdx[mapped.fecha].push(found.ev);
+      } else {
+        Object.assign(found.ev, mapped);
+      }
+    });
+    if(added > 0) {
+      buildFilters();
+      applyFilters();
+      if(selDate) renderPaneContent();
+      saveToLocalStorage();
+      toast(added+' OS nuevas sincronizadas desde Google Sheets', 'ok');
+    }
+  } catch(e) { /* silencioso — doSync ya reporta el estado de conexión */ }
+}
+
+// ── ALIADO ───────────────────────────────────────────────────
+function mapEstado(s) {
+  s=(s||'').toLowerCase();
+  if(s.includes('ejecutad')||s==='done') return 'done';
+  if(s.includes('cancel')) return 'cancel';
+  if(s.includes('reprog')) return 'reprog';
+  return 'pending';
+}
+
+function getAliado(email) {
+  const e=(email||''). toLowerCase();
+  if(e.includes('cirelectrico')||e.includes('cirelectr')) return 'Circuitos Eléctricos';
+  if(e.includes('c3prontoservicios')) return 'C3 Pronto Servicios';
+  if(e.includes('mhev')) return 'MHEV Ingeniería';
+  if(e.includes('valgaro')) return 'Valgaro';
+  if(e.includes('cgmsupport')||e.includes('cgm.')) return 'CGM Support';
+  if(e.includes('ocaglobal')) return 'OCA Global';
+  if(e.includes('enerbit')) return 'enerBit';
+  if(e.includes('@')) return e.split('@')[1].split('.')[0];
+  return 'Otro';
+}
+
+// ── PARSEAR FECHA ─────────────────────────────────────────────
+function parseFecha(s) {
+  if(!s) return null;
+  s = String(s).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  // Formato con año de 2 digitos, p.ej. "7/11/26 8:30" => mes/dia/año (M/D/YY)
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})(?:\s|$)/);
+  if(m) {
+    const yy = parseInt(m[3],10);
+    const year = 2000 + yy;
+    return `${year}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;
+  }
+  const n = parseFloat(s);
+  if(!isNaN(n)&&n>30000){const d=new Date(Math.round((n-25569)*86400*1000));return dateKey(d);}
+  return null;
+}
+function parseTime(s){
+  s = String(s||'');
+  const m = s.match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM|am|pm)?/);
+  if(!m) return '';
+  let h = parseInt(m[1],10);
+  const min = m[2];
+  const ampm = m[3] ? m[3].toUpperCase() : null;
+  if(ampm === 'PM' && h < 12) h += 12;
+  if(ampm === 'AM' && h === 12) h = 0;
+  return String(h).padStart(2,'0')+':'+min;
+}
+
+// ── INIT ─────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  buildColorPicker();
+  configurarArrastreBoton();
+  document.addEventListener('click', function(e) {
+    if(!e.target.closest('#dep-wrap')) closeMSAll('dep');
+    if(!e.target.closest('#cit-wrap')) closeMSAll('cit');
+    if(!e.target.closest('#typ-wrap')) closeMSAll('typ');
+  });
+  updateSelBar();
+  // Siempre intentar cargar __OS__ incrustado primero
+  cargarDatosIniciales();
+});
+
+async function cargarDatosIniciales() {
+  // Definir mapas de expansion localmente
+  var AL = {eB:'enerBit',CE:'Circuitos Electricas',C3:'C3 Pronto Servicios',
+             MH:'MHEV Ingenieria',VG:'Valgaro',CG:'CGM Support',OC:'OCA Global',kT:'KantiA'};
+  var ST = {D:'done', C:'cancel', R:'reprog', P:'pending'};
+
+  var savedNotes = {};
+  try {
+    var sn = localStorage.getItem('cal_notes');
+    if(sn) savedNotes = JSON.parse(sn);
+  } catch(e) {}
+
+  // 0) Intentar PRIMERO el dataset compartido completo de Google Sheets — así todos
+  //    los que abran el calendario ven la misma base, no solo lo que cada uno cargó.
+  var gotFromGAS = false;
+  try { gotFromGAS = await pullFullDatasetFromGAS(); } catch(e) {}
+  if(gotFromGAS) {
+    Object.values(osIdx).flat().forEach(function(ev){
+      var note = savedNotes[ev.oid+'|'+ev.aid];
+      if(note) {
+        if(note.em_m) ev.em_m = note.em_m;
+        if(note.nt_m) ev.nt_m = note.nt_m;
+        if(note.mat)  ev.mat  = note.mat;
+      }
+    });
+    try { var saG = localStorage.getItem('cal_acts'); if(saG) Object.assign(actEv, JSON.parse(saG)); } catch(e) {}
+    saveToLocalStorage();
+    inicializarCalendario();
+    return;
+  }
+
+  // 1) Sin Google Sheets disponible: preferir el dataset COMPLETO guardado en este
+  //    navegador (más reciente que lo incrustado en el archivo)
+  var localFull = null;
+  try {
+    var lf = localStorage.getItem('cal_full_os');
+    if(lf) localFull = JSON.parse(lf);
+  } catch(e) {}
+
+  if(localFull && Object.keys(localFull).length > 0) {
+    osIdx = localFull;
+    // Reaplicar notas guardadas (por si se editaron después del último guardado completo)
+    Object.values(osIdx).flat().forEach(function(ev){
+      var note = savedNotes[ev.oid+'|'+ev.aid];
+      if(note) {
+        if(note.em_m) ev.em_m = note.em_m;
+        if(note.nt_m) ev.nt_m = note.nt_m;
+        if(note.mat)  ev.mat  = note.mat;
+      }
+    });
+    try { var sa0 = localStorage.getItem('cal_acts'); if(sa0) Object.assign(actEv, JSON.parse(sa0)); } catch(e) {}
+    inicializarCalendario();
+    return;
+  }
+
+  // 2) Sin nada guardado localmente: usar los datos incrustados en el archivo (línea base compartida)
+  var rawOS = (typeof __OS_RAW__ !== 'undefined') ? __OS_RAW__ : 
+              (typeof __OS__ !== 'undefined') ? __OS__ : null;
+
+  if(!rawOS || Object.keys(rawOS).length === 0) {
+    // Sin datos incrustados - mostrar pantalla de carga
+    return;
+  }
+
+  // Expandir datos (soporta formato compacto y formato completo)
+  osIdx = {};
+  Object.entries(rawOS).forEach(function(entry) {
+    var fecha = entry[0], evs = entry[1];
+    osIdx[fecha] = evs.map(function(ev) {
+      var expanded;
+      if(ev.oid) {
+        expanded = ev; // formato completo
+      } else {
+        expanded = {
+          oid:ev.o||'', aid:ev.a||ev.o+'-a'||'',
+          st:ST[ev.s]||'pending', em_m:'',
+          ci:ev.c||'', sta:ev.d||'',
+          tc:ev.t||'', tn:ev.t||'',
+          op:ev.p||'', em:'',
+          al:AL[ev.l]||'enerBit',
+          tec:ev.p||'', dir:ev.r||'',
+          cert:'', des:'', obs:'',
+          cr:ev.x||'', co:'',
+          ti:ev.f||'', nt_m:'', mat:''
+        };
+      }
+      // Restaurar notas/estado/material guardados (por orden + punto de servicio)
+      var note = savedNotes[expanded.oid+'|'+expanded.aid];
+      if(note) {
+        if(note.em_m) expanded.em_m = note.em_m;
+        if(note.nt_m) expanded.nt_m = note.nt_m;
+        if(note.mat)  expanded.mat  = note.mat;
+      }
+      return expanded;
+    });
+  });
+
+  // Restaurar actividades
+  try {
+    var sa = localStorage.getItem('cal_acts');
+    if(sa) Object.assign(actEv, JSON.parse(sa));
+  } catch(e) {}
+
+  inicializarCalendario();
+}
+
+function inicializarCalendario() {
+  var flat = Object.values(osIdx).flat();
+  flat.forEach(function(ev){ if(ev.sta) depColor(ev.sta); });
+  allDeps = [...new Set(flat.map(function(e){return e.sta;}).filter(Boolean))].sort();
+  allCits = [...new Set(flat.map(function(e){return e.ci;}).filter(Boolean))].sort();
+  var firstDate = Object.keys(osIdx).sort()[0];
+  if(firstDate){var p=firstDate.split('-').map(Number);curY=p[0];curM=p[1]-1;}
+  showCalScreen();
+  buildFilters();
+  applyFilters();
+  setSyncUI('ok', flat.length + ' OS cargadas');
+  startSync();
+  actualizarBadgeAsistente();
+}
+
+function saveToLocalStorage() {
+  // Guardar notas/estado/material (liviano), por orden + punto de servicio
+  var notes = {};
+  Object.values(osIdx).flat().forEach(function(ev) {
+    if(ev.oid && (ev.em_m || ev.nt_m || ev.mat)) {
+      notes[ev.oid+'|'+ev.aid] = {em_m:ev.em_m||'', nt_m:ev.nt_m||'', mat:ev.mat||''};
+    }
+  });
+  try {
+    localStorage.setItem('cal_notes', JSON.stringify(notes));
+    localStorage.setItem('cal_acts', JSON.stringify(actEv));
+  } catch(e) {}
+  // Guardar también el dataset COMPLETO de OS, para que sobreviva a recargar la página
+  try {
+    localStorage.setItem('cal_full_os', JSON.stringify(osIdx));
+  } catch(e) {
+    // Límite de espacio del navegador excedido (localStorage ~5-10MB) — las notas de arriba
+    // ya quedaron guardadas, pero el dataset completo no cabe. Avisar al usuario.
+    console.warn('No se pudo guardar el dataset completo en localStorage:', e);
+    toast('⚠️ Demasiadas OS para guardar en este navegador — al recargar la página se perderán. Sincroniza con Google Sheets o carga menos días a la vez.', 'err');
+  }
+  actualizarBadgeAsistente();
+}
+
+async function loadFromGAS() {
+  setSyncUI('busy', 'Cargando...');
+  try {
+    const data = await gasGet({action: 'getOS'});
+    if(data.ok && data.data && data.data.length) {
+      processRowsFromGAS(data.data);
+      // Cargar actividades
+      const data2 = await gasGet({action: 'getActividades'});
+      if(data2.ok && data2.data) {
+        data2.data.forEach(act => {
+          if(!actEv[act.fecha]) actEv[act.fecha] = [];
+          actEv[act.fecha].push({
+            id:act.id, titulo:act.titulo, cuadrilla:act.cuadrilla,
+            departamento:act.departamento, hora:act.hora, obs:act.obs, color:act.color
+          });
+        });
+      }
+      setSyncUI('ok', data.data.length + ' OS');
+      startSync();
+    } else {
+      setSyncUI('', 'Sin datos');
+    }
+  } catch(e) {
+    setSyncUI('err', 'Sin conexión');
+  }
+}
+
+function processRowsFromGAS(rows) {
+  osIdx = {};
+  depColorMap = {}; depColorIdx = 0;
+  rows.forEach(row => {
+    const fecha = row.fecha;
+    if(!fecha) return;
+    const ev = {
+      oid:row.oid||'', aid:row.aid||'',
+      st:row.estado||'',  em_m:row.estado_manual||'',
+      ci:row.city||'',   sta:row.state||'',
+      tc:row.type_code||'', tn:row.type_name||'',
+      op:row.operator||'', em:row.email||'',
+      al:row.aliado||getAliado(row.email||''),
+      tec:row.tecnico||'', dir:row.dir||'', cert:row.cert||'',
+      des:row.description||'', obs:row.obs||'',
+      cr:row.cancel_reason||'', co:row.cancel_obs||'',
+      ti:row.hora||'',
+      nt_m:row.nota||'', mat:row.material||'',
+    };
+    // Upsert: si la OS ya existe en esa fecha, actualizar; si no, agregar
+    if(!osIdx[fecha]) osIdx[fecha]=[];
+    const existingIdx = osIdx[fecha].findIndex(function(e){ return e.oid===ev.oid; });
+    if(existingIdx >= 0) {
+      // Actualizar datos del sistema conservando anotaciones manuales
+      const existing = osIdx[fecha][existingIdx];
+      ev.em_m = existing.em_m || ev.em_m;
+      ev.nt_m = existing.nt_m || ev.nt_m;
+      ev.mat  = existing.mat  || ev.mat;
+      osIdx[fecha][existingIdx] = ev;
+    } else {
+      // OS nueva o movida de fecha - verificar si estaba en otra fecha
+      var oldEntry = prevMap[ev.oid];
+      if(oldEntry && oldEntry.fecha !== fecha) {
+        // Estaba en otra fecha - remover de la fecha anterior
+        if(osIdx[oldEntry.fecha]) {
+          osIdx[oldEntry.fecha] = osIdx[oldEntry.fecha].filter(function(e){ return e.oid !== ev.oid; });
+          if(osIdx[oldEntry.fecha].length === 0) delete osIdx[oldEntry.fecha];
+        }
+        // Preservar anotaciones
+        ev.em_m = oldEntry.ev.em_m || ev.em_m;
+        ev.nt_m = oldEntry.ev.nt_m || ev.nt_m;
+        ev.mat  = oldEntry.ev.mat  || ev.mat;
+      }
+      osIdx[fecha].push(ev);
+    }
+    if(ev.sta) depColor(ev.sta);
+  });
+  const firstDate = Object.keys(osIdx).sort()[0];
+  if(firstDate){const[y,m]=firstDate.split('-').map(Number);curY=y;curM=m-1;}
+  allDeps=[...new Set(Object.values(osIdx).flat().map(e=>e.sta).filter(Boolean))].sort();
+  allCits=[...new Set(Object.values(osIdx).flat().map(e=>e.ci).filter(Boolean))].sort();
+  showCalScreen();
+  buildFilters();
+  applyFilters();
+}
+
+// ── CARGAR EXCEL/CSV ─────────────────────────────────────────
+function onDrop(e){e.preventDefault();document.getElementById('dropzone').classList.remove('over');loadFile(e.dataTransfer.files[0]);}
+function onFileSelect(file){if(file)loadFile(file);}
+
+function loadFile(file) {
+  if(!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if(!['csv','xlsx','xls'].includes(ext)){toast('Solo CSV o Excel','err');return;}
+  setSyncUI('busy','Leyendo archivo...');
+  setProg(10,'Leyendo...');
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      setProg(30,'Parseando...');
+      let rows;
+      if(ext==='csv'){
+        const txt=ev.target.result;
+        const line1=(txt.split('\n')[0]||''). split('\n')[0];
+        const sep=((line1.match(/;/g)||[]).length>=(line1.match(/,/g)||[]).length)?';':',';
+        const wb=XLSX.read(txt,{type:'string',FS:sep,raw:true});
+        let best=wb.SheetNames[0],bestN=0;
+        wb.SheetNames.forEach(n=>{const r=XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:'',raw:false});if(r.length>bestN){bestN=r.length;best=n;}});
+        rows=XLSX.utils.sheet_to_json(wb.Sheets[best],{defval:'',raw:false});
+      } else {
+        const wb=XLSX.read(ev.target.result,{type:'binary',raw:false});
+        let best=wb.SheetNames[0],bestN=0;
+        wb.SheetNames.forEach(n=>{const r=XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:'',raw:false});if(r.length>bestN){bestN=r.length;best=n;}});
+        rows=XLSX.utils.sheet_to_json(wb.Sheets[best],{defval:'',raw:false});
+      }
+      setProg(60,`Procesando ${rows.length} filas...`);
+      processExcelRows(rows, file.name);
+    } catch(err) {
+      setProg(null);setSyncUI('err','Error');
+      toast('Error al leer: '+err.message,'err');
+    }
+  };
+  if(ext==='csv') reader.readAsText(file,'utf-8');
+  else reader.readAsBinaryString(file);
+}
+
+function processExcelRows(rows, nombre) {
+  if(!rows || !rows.length) { toast('El archivo no tiene datos', 'err'); return; }
+
+  // ── DETECCION AUTOMATICA DE COLUMNAS ──────────────────────
+  var cols = Object.keys(rows[0]);
+  
+  function findCol(keys) {
+    for(var i=0; i<keys.length; i++) {
+      var found = cols.find(function(c){ 
+        return c.toLowerCase().trim() === keys[i].toLowerCase(); 
+      });
+      if(found) return found;
+    }
+    // Busqueda parcial
+    for(var i=0; i<keys.length; i++) {
+      var found = cols.find(function(c){ 
+        return c.toLowerCase().includes(keys[i].toLowerCase()); 
+      });
+      if(found) return found;
+    }
+    return null;
+  }
+
+  var COL = {
+    fecha:  findCol(['PLANNED_DATE_BEGIN','FECHA Y HORA PROGRAMADA','FECHA PROGRAMADA','fecha_inicio','FECHA','fecha','date','planned_date']),
+    oid:    findCol(['ORDER_ID','ID ORDEN','ID_ORDEN','order_id','id_orden','ID','ORDEN']),
+    aid:    findCol(['ASSIGNEE_ID','assignee_id','ASIGNADO_ID']),
+    status: findCol(['STATUS','ESTADO DE LA ORDEN','ESTADO','estado','status']),
+    city:   findCol(['CITY','CIUDAD','ciudad','city']),
+    state:  findCol(['STATE','DEPARTAMENTO','departamento','state','DPTO']),
+    type:   findCol(['ORDER_TYPE_CODE','ACTIVIDAD PRINCIPAL PROGRAMADA','TIPO DE ORDEN','ORDER_TYPE_NAME','tipo','type','ACTIVIDAD']),
+    op:     findCol(['OPERATOR_FULLNAME','NOMBRE DEL OPERADOR EN CAMPO','OPERADOR','TECNICO','operator','tecnico','NOMBRE_OPERADOR']),
+    email:  findCol(['OPERATOR_EMAIL','CORREO DEL OPERADOR EN CAMPO','EMAIL','CORREO','email','correo']),
+    dir:    findCol(['DIRECCION','DIRECCIÓN','direccion','address','DIR']),
+    cert:   findCol(['CERTIFICATE_ID','ACTA','certificate_id','CERT']),
+    des:    findCol(['DESCRIPTION','OBSERVACIÓN GENERAL','DESCRIPCION','description','obs_general','OBSERVACION']),
+    obs:    findCol(['OBSERVATIONS_CERTIFICATES','IRREGULARIDADES','observations','IRREGULARIDAD']),
+    cr:     findCol(['CANCEL_REASSON','MOTIVO DE CANCELACIÓN','CANCEL_REASON','motivo_cancel','MOTIVO']),
+    co:     findCol(['CANCEL_OBSERVATIONS','OBSERVACIÓN DE CANCELACIÓN','cancel_obs','obs_cancel']),
+    tec:    findCol(['TECNICOS_ASIGNADOS','TECNICO ASIGNADO','tecnicos','TECNICO','tec']),
+    medidor:findCol(['METER_SERIAL_INSTALLED','MEDIDOR INSTALADO','MEDIDOR','medidor','METER_SERIAL']),
+  };
+
+  // Mostrar columnas detectadas en consola
+  console.log('Columnas detectadas:', JSON.stringify(COL));
+  
+  // Verificar columna de fecha (obligatoria)
+  if(!COL.fecha) {
+    toast('No se encontro columna de fecha. Columnas disponibles: ' + cols.slice(0,5).join(', '), 'err');
+    return;
+  }
+  if(!COL.oid) {
+    toast('No se encontro columna de ID de orden', 'err');
+    return;
+  }
+
+  function getVal(row, col, max) {
+    var v = col ? (row[col] || '') : '';
+    v = String(v).trim();
+    if(v === 'nan' || v === 'null' || v === 'undefined') v = '';
+    return max ? v.substring(0, max) : v;
+  }
+
+  // Preservar notas/estado/material actuales (clave: orden + punto de servicio)
+  var savedNotes = {};
+  try { var sn=localStorage.getItem('cal_notes'); if(sn) savedNotes=JSON.parse(sn); } catch(e){}
+  Object.values(osIdx).flat().forEach(function(ev){
+    if(ev.oid && (ev.em_m||ev.nt_m||ev.mat)) {
+      savedNotes[ev.oid+'|'+ev.aid]={em_m:ev.em_m||'',nt_m:ev.nt_m||'',mat:ev.mat||''};
+    }
+  });
+
+  // Guardar OS previas para merge (misma clave compuesta)
+  var prevMap = {};
+  Object.entries(osIdx).forEach(function(entry){
+    entry[1].forEach(function(ev){
+      if(ev.oid) prevMap[ev.oid+'|'+ev.aid]={ev:ev,fecha:entry[0]};
+    });
+  });
+
+  depColorMap={}; depColorIdx=0;
+  var ok=0, skip=0, maxFechaArchivo='';
+
+  rows.forEach(function(row, rowIdx){
+    var rawF = getVal(row, COL.fecha);
+    var fecha = parseFecha(rawF);
+    if(!fecha){ skip++; return; }
+    if(fecha > maxFechaArchivo) maxFechaArchivo = fecha;
+
+    var oid = getVal(row, COL.oid);
+    if(!oid){ skip++; return; }
+    // Sin columna ASSIGNEE_ID explícita: derivar un id de punto de servicio
+    // a partir de la dirección, para no colapsar órdenes con varios
+    // apartamentos/medidores (mismo ID ORDEN, distinta DIRECCIÓN) en una sola fila.
+    var dirVal = getVal(row, COL.dir, 80);
+    var emailVal = getVal(row, COL.email, 60);
+    var opVal = getVal(row, COL.op, 60);
+    // Punto de servicio = orden + dirección + correo del aliado/contratista.
+    // Si dos aliados distintos atendieron la misma dirección (reasignación),
+    // quedan como 2 tarjetas separadas en vez de pisarse entre sí. Respaldo
+    // en cascada cuando falta el correo (pasa seguido en OS de Normalización/
+    // AIV/NORM_CODE): usar el nombre del técnico, y si tampoco hay nombre,
+    // el índice de fila — así nunca dos técnicos/aliados distintos en la
+    // misma orden+dirección colisionan en la misma tarjeta por falta de dato.
+    var distintivo = emailVal ? emailVal.toLowerCase() : (opVal ? nrm(opVal) : 'r'+rowIdx);
+    var aid = getVal(row, COL.aid) || (oid+'|'+(dirVal||'')+'|'+distintivo);
+    var key = oid+'|'+aid;
+    var em  = getVal(row, COL.email);
+    var stRaw = getVal(row, COL.status);
+    var st  = mapEstado(stRaw) || (stRaw.toLowerCase()==='done'?'done':'pending');
+    var prev= savedNotes[key]||{};
+
+    var ev = {
+      oid: oid, aid: aid, fecha: fecha,
+      st:  st, em_m: prev.em_m||'',
+      ci:  getVal(row, COL.city, 30),
+      sta: getVal(row, COL.state, 25),
+      tc:  getVal(row, COL.type, 30),
+      tn:  getVal(row, COL.type, 60),
+      op:  getVal(row, COL.op, 40),
+      em:  em, al: getAliado(em),
+      tec: getVal(row, COL.tec, 80) || getVal(row, COL.op, 80),
+      dir: dirVal,
+      cert:getVal(row, COL.cert, 40),
+      des: getVal(row, COL.des, 200),
+      obs: getVal(row, COL.obs, 200),
+      cr:  getVal(row, COL.cr, 80),
+      co:  getVal(row, COL.co, 140),
+      ti:  parseTime(rawF),
+      nt_m:prev.nt_m||'', mat:prev.mat||'',
+      medidor: getVal(row, COL.medidor, 40)
+    };
+
+    // Merge incremental (por orden + punto de servicio, no solo por orden)
+    if(!osIdx[fecha]) osIdx[fecha]=[];
+    var existIdx=osIdx[fecha].findIndex(function(e){return e.oid===oid&&e.aid===aid;});
+    if(existIdx>=0){
+      // Actualizar conservando anotaciones
+      var ex=osIdx[fecha][existIdx];
+      ev.em_m=ex.em_m||ev.em_m;
+      ev.nt_m=ex.nt_m||ev.nt_m;
+      ev.mat=ex.mat||ev.mat;
+      osIdx[fecha][existIdx]=ev;
+    } else {
+      // Este punto de servicio, ¿estaba en otra fecha? mover
+      var old=prevMap[key];
+      if(old && old.fecha!==fecha && osIdx[old.fecha]) {
+        osIdx[old.fecha]=osIdx[old.fecha].filter(function(e){return !(e.oid===oid&&e.aid===aid);});
+        if(!osIdx[old.fecha].length) delete osIdx[old.fecha];
+        ev.em_m=old.ev.em_m||ev.em_m;
+        ev.nt_m=old.ev.nt_m||ev.nt_m;
+        ev.mat=old.ev.mat||ev.mat;
+      }
+      osIdx[fecha].push(ev);
+    }
+    if(ev.sta) depColor(ev.sta);
+    ok++;
+  });
+
+  allDeps=[...new Set(Object.values(osIdx).flat().map(function(e){return e.sta;}).filter(Boolean))].sort();
+  allCits=[...new Set(Object.values(osIdx).flat().map(function(e){return e.ci;}).filter(Boolean))].sort();
+  var firstDate=Object.keys(osIdx).sort()[0];
+  if(firstDate){var p=firstDate.split('-').map(Number);curY=p[0];curM=p[1]-1;}
+
+  showCalScreen();
+  buildFilters();
+  applyFilters();
+  saveToLocalStorage();
+  setProg(100,'Listo');
+  setTimeout(function(){ setProg(null); }, 500);
+  setSyncUI('ok', ok+' OS · '+nombre);
+  toast(ok+' ordenes cargadas'+(skip?' ('+skip+' sin fecha)':''), 'ok');
+  startSync();
+
+  // Aviso: si el archivo trae fechas muy recientes y viene de Snowflake, puede
+  // estar incompleto (retraso de sincronización ya detectado antes).
+  if(maxFechaArchivo){
+    var hoyKey = dateKey(new Date());
+    var diasDesdeMax = Math.round((new Date(hoyKey) - new Date(maxFechaArchivo)) / 86400000);
+    if(diasDesdeMax <= 3){
+      setTimeout(function(){
+        toast('⚠️ Este archivo incluye fechas muy recientes ('+maxFechaArchivo+'). Si viene de Snowflake, puede estar incompleto para los últimos días — el export directo del sistema es más confiable para fechas tan recientes.', 'err');
+      }, 4000);
+    }
+  }
+
+  // Compartir con todos: subir el dataset completo a Google Sheets
+  setSyncUI('busy','Subiendo a Google Sheets...');
+  pushFullDatasetToGAS().then(function(success){
+    setSyncUI(success?'ok':'err', success?'Compartido con todos':'GAS offline - datos locales OK');
+  });
+}
+
+function showCalScreen() {
+  document.getElementById('upload-screen').style.display='none';
+  document.getElementById('cal-screen').style.display='block';
+  document.getElementById('btn-crear').classList.remove('btn-hidden');
+  document.getElementById('btn-export').classList.remove('btn-hidden');
+  document.getElementById('btn-reset').classList.remove('btn-hidden');
+}
+
+function resetApp() {
+  if(!confirm('¿Cargar nuevo archivo? Se borrará el actual.')) return;
+  osIdx={}; filtOS={}; actEv={};
+  selDate=null; allDeps=[]; allCits=[]; selectedDeps.clear(); selectedCits.clear();
+  depColorMap={}; depColorIdx=0;
+  if(syncTimer){clearInterval(syncTimer);syncTimer=null;}
+  if(fullSyncTimer){clearInterval(fullSyncTimer);fullSyncTimer=null;}
+  // Limpiar localStorage
+  try {
+    localStorage.removeItem('cal_notes');
+    localStorage.removeItem('cal_acts');
+    localStorage.removeItem('cal_full_os');
+  } catch(e){}
+  document.getElementById('upload-screen').style.display='';
+  document.getElementById('cal-screen').style.display='none';
+  ['btn-crear','btn-export','btn-reset'].forEach(id=>document.getElementById(id).classList.add('btn-hidden'));
+  document.getElementById('file-input').value='';
+  setSyncUI('','Sin datos');
+  document.getElementById('dep-legend').classList.remove('show');
+}
+
+// ── SINCRONIZACIÓN EN TIEMPO REAL ─────────────────────────────
+function startSync() {
+  if(syncTimer) clearInterval(syncTimer);
+  syncTimer = setInterval(doSync, 20000);
+  if(fullSyncTimer) clearInterval(fullSyncTimer);
+  fullSyncTimer = setInterval(mergeFullDatasetFromGAS, 60000);
+}
+
+async function doSync() {
+  setSyncUI('busy','Sincronizando...');
+  try {
+    const data = await gasGet({action:'getChanges', since:lastSyncTs});
+    if(data.ok && data.changes && data.changes.length) {
+      let updated=0;
+      data.changes.forEach(ch => {
+        Object.entries(osIdx).forEach(([fecha, evs]) => {
+          evs.forEach(ev => {
+            if(ev.oid===ch.order_id && ev.aid===ch.assignee_id) {
+              if(ch.estado_manual !== undefined)   ev.em_m = ch.estado_manual;
+              if(ch.material_estado !== undefined) ev.mat  = ch.material_estado;
+              if(ch.nota_manual !== undefined)     ev.nt_m = ch.nota_manual;
+              if(ch.fecha !== undefined && ch.fecha && ch.fecha !== fecha) {
+                // Mover OS a la nueva fecha que alguien más asignó
+                osIdx[fecha] = osIdx[fecha].filter(e => e !== ev);
+                if(!osIdx[ch.fecha]) osIdx[ch.fecha] = [];
+                osIdx[ch.fecha].push(ev);
+              }
+              updated++;
+            }
+          });
+        });
+      });
+      if(updated>0){ applyFilters(); if(selDate) renderPaneContent(); saveToLocalStorage(); }
+      lastSyncTs = data.ts || Date.now();
+      setSyncUI('ok', updated>0?`${updated} cambios`:'Al día');
+    } else {
+      setSyncUI('ok','Al día');
+    }
+  } catch(e) {
+    setSyncUI('err','GAS offline - datos locales OK');
+  }
+}
+
+// ── MULTISELECT ───────────────────────────────────────────────
+const msData = { dep:{all:[],sel:new Set()}, cit:{all:[],sel:new Set()}, typ:{all:[],sel:new Set()} };
+
+function toggleMS(key, event) {
+  if(event) event.stopPropagation();
+  const drop = document.getElementById(key + '-drop');
+  const isOpen = drop.classList.contains('open');
+  document.querySelectorAll('.ms-drop').forEach(function(d){ d.classList.remove('open'); });
+  if(!isOpen) drop.classList.add('open');
+}
+
+function closeMSAll(key){document.getElementById(`${key}-drop`).classList.remove('open');}
+
+function buildMSList(key, items) {
+  msData[key].all = items;
+  const list = document.getElementById(key + '-list');
+  if(!list) return;
+  list.innerHTML = '';
+  items.forEach(function(item) {
+    const div = document.createElement('div');
+    div.className = 'ms-item';
+    div.dataset.val = item;
+    const checked = msData[key].sel.has(item);
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = checked;
+    (function(it){
+      cb.addEventListener('change', function(){
+        if(this.checked) msData[key].sel.add(it);
+        else msData[key].sel.delete(it);
+        // Si quedan todos marcados, equivale a "todos" (sin filtro)
+        if(msData[key].sel.size === msData[key].all.length) msData[key].sel.clear();
+        updateMSBtn(key);
+        applyFilters();
+      });
+    })(item);
+    if(key === 'dep') {
+      const co = depColor(item);
+      const dot = document.createElement('div');
+      dot.className = 'ms-dot';
+      dot.style.background = co.bar;
+      div.appendChild(cb);
+      div.appendChild(dot);
+    } else {
+      div.appendChild(cb);
+    }
+    const sp = document.createElement('span');
+    sp.textContent = item;
+    div.appendChild(sp);
+    list.appendChild(div);
+  });
+  updateMSBtn(key);
+}
+
+function searchMS(key, q) {
+  document.querySelectorAll(`#${key}-list .ms-item`).forEach(item=>{
+    item.style.display=nrm(item.dataset.val).includes(nrm(q))?'flex':'none';
+  });
+}
+
+function clearMS(key) {
+  msData[key].sel.clear();
+  document.querySelectorAll(`#${key}-list input`).forEach(cb=>cb.checked=false);
+  updateMSBtn(key); applyFilters();
+}
+function allMS(key){
+  msData[key].sel.clear();
+  document.querySelectorAll(`#${key}-list input`).forEach(cb=>cb.checked=true);
+  updateMSBtn(key); applyFilters();
+}
+
+function updateMSBtn(key) {
+  const sel=msData[key].sel, all=msData[key].all;
+  const lbl=document.getElementById(`${key}-lbl`);
+  const cnt=document.getElementById(`${key}-cnt`);
+  if(sel.size===0||sel.size===all.length){
+    lbl.textContent=(key==='cit')?'Todas':'Todos'; cnt.style.display='none';
+  } else {
+    lbl.textContent=sel.size===1?[...sel][0]:`${sel.size} selec.`;
+    cnt.textContent=sel.size; cnt.style.display='inline';
+  }
+}
+
+function buildDepLegend() {
+  const leg=document.getElementById('dep-legend');
+  if(!allDeps.length){leg.classList.remove('show');return;}
+  const shown=allDeps.filter(d=>msData.dep.sel.size===0||msData.dep.sel.has(d));
+  leg.innerHTML='<strong style="font-size:.63rem;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Colores:</strong>'+
+    shown.map(dep=>{const co=depColor(dep);return`<div class="legend-item"><div class="legend-sq" style="background:${co.bar}"></div>${dep}</div>`;}).join('');
+  leg.classList.add('show');
+}
+
+// ── FILTROS ───────────────────────────────────────────────────
+function buildFilters() {
+  const flat=Object.values(osIdx).flat();
+  const fill=(id,items,def='Todos')=>{
+    const s=document.getElementById(id); if(!s) return;
+    const pv=s.value;
+    s.innerHTML=`<option value="">${def}</option>`;
+    [...new Set(items)].filter(Boolean).sort().forEach(v=>s.insertAdjacentHTML('beforeend',`<option>${v}</option>`));
+    if(pv) s.value=pv;
+  };
+  fill('f-al', flat.map(e=>e.al));
+  fill('f-tec',flat.map(e=>e.tec||e.op));
+  allDeps=[...new Set(flat.map(e=>e.sta).filter(Boolean))].sort();
+  allCits=[...new Set(flat.map(e=>e.ci).filter(Boolean))].sort();
+  const allTyps=[...new Set(flat.map(e=>e.tc).filter(Boolean))].sort();
+  msData.dep.sel.clear(); msData.cit.sel.clear(); msData.typ.sel.clear();
+  buildMSList('dep', allDeps);
+  buildMSList('cit', allCits);
+  buildMSList('typ', allTyps);
+}
+
+function applyFilters() {
+  const al=document.getElementById('f-al')?.value||'';
+  const sta=document.getElementById('f-sta')?.value||'';
+  const mat=document.getElementById('f-mat')?.value||'';
+  const tec=nrm(document.getElementById('f-tec')?.value||'');
+  const txt=nrm(document.getElementById('f-txt')?.value||'');
+  filtOS={};
+  Object.entries(osIdx).forEach(([date,evs])=>{
+    const f=evs.filter(ev=>{
+      const ds=calcStatus(ev);
+      if(msData.dep.sel.size>0&&!msData.dep.sel.has(ev.sta)) return false;
+      if(msData.cit.sel.size>0&&!msData.cit.sel.has(ev.ci))  return false;
+      if(msData.typ.sel.size>0&&!msData.typ.sel.has(ev.tc))  return false;
+      if(al&&ev.al!==al)   return false;
+      if(sta&&ds!==sta)    return false;
+      if(mat&&(ev.mat||''). trim()!==mat) return false;
+      if(tec&&!nrm((ev.tec||'')+' '+(ev.op||'')).includes(tec)) return false;
+      if(txt){const full=nrm([ev.ci,ev.sta,ev.tc,ev.op,ev.tec,ev.al,ev.des,ev.obs,ev.oid].join(' ')); if(!full.includes(txt)) return false;}
+      if(onlySelectedMode && !selectedOS.has(osKey(ev.oid,ev.aid))) return false;
+      return true;
+    });
+    if(f.length) filtOS[date]=f;
+  });
+  renderCurrentView();
+  updateKPIs();
+  if(selDate) renderPaneContent();
+  buildDepLegend();
+}
+
+function clearAllFilters() {
+  ['f-al','f-sta','f-mat','f-tec','f-txt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  clearMS('dep'); clearMS('cit'); clearMS('typ');
+  onlySelectedMode=false; updateSelBar();
+  applyFilters();
+}
+
+// ── KPIs ──────────────────────────────────────────────────────
+function updateKPIs() {
+  const flat=Object.values(filtOS).flat();
+  const pfx=`${curY}-${P2(curM+1)}`;
+  const mf=Object.entries(filtOS).filter(([d])=>d.startsWith(pfx)).flatMap(([,v])=>v);
+  const c=ds=>flat.filter(e=>calcStatus(e)===ds).length;
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v||'–';};
+  set('k-tot',flat.length);set('k-don',c('done'));set('k-rpg',c('reprog'));
+  set('k-cnl',c('cancel'));set('k-pnd',c('pending'));
+  set('k-mes',mf.length);set('k-act',Object.values(actEv).flat().length);
+}
+
+// ── VISTAS ────────────────────────────────────────────────────
+function setView(v) {
+  currentView=v;
+  ['month','week','day'].forEach(x=>{
+    const el=document.getElementById('view-'+x);
+    const btn=document.getElementById('vt-'+x);
+    if(el)  el.style.display=x===v?'block':'none';
+    if(btn) btn.classList.toggle('active',x===v);
+  });
+  renderCurrentView();
+}
+
+function renderCurrentView(){
+  if(currentView==='month')     renderCalendar();
+  else if(currentView==='week') renderWeek();
+  else                           renderDayView();
+}
+
+function goToday(){
+  const now=new Date();
+  curY=now.getFullYear();curM=now.getMonth();dayViewDate=new Date(now);
+  renderCurrentView();updateKPIs();
+}
+
+function navigate(dir){
+  if(currentView==='week'){
+    const ws=weekStart(new Date(curY,curM,1));ws.setDate(ws.getDate()+dir*7);
+    curY=ws.getFullYear();curM=ws.getMonth();renderWeek();
+  } else if(currentView==='day'){
+    dayViewDate.setDate(dayViewDate.getDate()+dir);
+    curY=dayViewDate.getFullYear();curM=dayViewDate.getMonth();renderDayView();
+  } else {
+    curM+=dir;if(curM>11){curM=0;curY++;}if(curM<0){curM=11;curY--;}
+    renderCalendar();
+  }
+  updateKPIs();
+}
+
+function navDay(dir){navigate(dir);}
+
+// ── CALENDARIO MENSUAL ────────────────────────────────────────
+function renderCalendar() {
+  const grid=document.getElementById('cal-grid');
+  if(!grid) return;
+  const hl={...getHolidays(curY-1),...getHolidays(curY),...getHolidays(curY+1)};
+  const lbl=document.getElementById('month-lbl');
+  if(lbl) lbl.textContent=`${MESES[curM]} ${curY}`;
+  const fd=new Date(curY,curM,1).getDay(), dim=new Date(curY,curM+1,0).getDate();
+  const tok=dateKey(new Date()), pfx=`${curY}-${P2(curM+1)}`;
+  grid.innerHTML='';
+  for(let i=0;i<fd;i++) grid.insertAdjacentHTML('beforeend','<div class="dc empty"></div>');
+  for(let d=1;d<=dim;d++){
+    const key=`${pfx}-${P2(d)}`;
+    const os=filtOS[key]||[], acts=actEv[key]||[], hol=hl[key];
+    const pEvs=os.filter(e=>calcStatus(e)==='pending');
+    const allP=os.length>0&&os.every(e=>calcStatus(e)==='pending');
+    const dss=os.map(e=>calcStatus(e));
+    const isMarked=os.some(e=>selectedOS.has(osKey(e.oid,e.aid)));
+    let cls='dc';
+    if(key===tok) cls+=' today';
+    if(hol)       cls+=' holiday';
+    if(key===selDate) cls+=' selected';
+    if(isMarked)  cls+=' marked';
+    if(allP)      cls+=' all-pend';
+    else if(dss.includes('done'))    cls+=' has-done';
+    else if(dss.includes('reprog'))  cls+=' has-reprog';
+    else if(dss.includes('cancel'))  cls+=' has-cancel';
+    else if(pEvs.length)              cls+=' has-pend';
+    const pb=pEvs.length?`<div class="d-pend">⏳${pEvs.length}</div>`:'';
+    const markHtml=isMarked?'<div class="d-mark-star">⭐</div>':'';
+    const shown=[...os.slice(0,2),...acts.slice(0,1)];
+    const chips=shown.map(function(ev){
+      if(ev.color){var co=ACT_COLORS.find(function(c){return c.bg===ev.color;})||ACT_COLORS[0];return '<div class="chip" style="background:'+co.bg+';color:'+co.bar+'">✏ '+ev.titulo+'</div>';}
+      var emp=getEmpresa(ev); var ei=empresaInfo(emp);
+      var chg=isChanged(ev.oid,ev.aid);
+      var bg=chg?'#FEF3C7':ei.bg;
+      var cl=chg?'#92400E':ei.cl;
+      var bar=chg?'#F59E0B':ei.bar;
+      var sc=ST[calcStatus(ev)]||ST.pending;
+      var prefix=chg?'🔔 ':emp==='kt'?'K ':emp==='usr'?'✏ ':sc.icon+' ';
+      return '<div class="chip" style="background:'+bg+';color:'+cl+';border-left:3px solid '+bar+'">'+prefix+ev.tc+' '+ev.ci+'</div>';
+    }).join('');;;;
+    const tot=os.length+acts.length;
+    const more=tot>3?`<div class="chip-more">+${tot-3} más</div>`:'';
+    const holHtml=hol?`<div class="d-hol">🎉 ${hol}</div>`:'';
+    grid.insertAdjacentHTML('beforeend',
+      `<div class="${cls}" onclick="openPanel('${key}')" ondragover="dDragOver(event)" ondragleave="dDragLeave(event)" ondrop="dDrop(event,'${key}')">${pb}${markHtml}${holHtml}<div class="d-num">${d}</div>${chips}${more}</div>`);
+  }
+}
+
+// ── VISTA SEMANAL ─────────────────────────────────────────────
+function weekStart(ref){const d=new Date(ref);d.setDate(d.getDate()-d.getDay());return d;}
+
+function renderWeek(){
+  const hl={...getHolidays(curY-1),...getHolidays(curY),...getHolidays(curY+1)};
+  const ws=weekStart(new Date(curY,curM,1));
+  const tok=dateKey(new Date());
+  const grid=document.getElementById('week-grid');
+  const lbl=document.getElementById('month-lbl');
+  if(!grid) return;
+  grid.innerHTML='';
+  let l0='',l6='';
+  for(let d=0;d<7;d++){
+    const dt=new Date(ws);dt.setDate(ws.getDate()+d);
+    const key=dateKey(dt);
+    if(d===0) l0=`${dt.getDate()} ${MESES[dt.getMonth()]}`;
+    if(d===6) l6=`${dt.getDate()} ${MESES[dt.getMonth()]} ${dt.getFullYear()}`;
+    const os=filtOS[key]||[], acts=actEv[key]||[], hol=hl[key];
+    const isToday=key===tok;
+    const isMarked=os.some(e=>selectedOS.has(osKey(e.oid,e.aid)));
+    const col=document.createElement('div'); col.className='week-col'+(isMarked?' col-marked':'');
+    const hdr=document.createElement('div'); hdr.className='week-hdr'+(isToday?' is-today':'');
+    hdr.innerHTML=`${DIAS[dt.getDay()].substring(0,3)} ${dt.getDate()}${isMarked?' ⭐':''}${hol?'<br><small style="font-size:.52rem;opacity:.8">🎉 Fest.</small>':''}`;
+    col.appendChild(hdr);
+    const body=document.createElement('div'); body.className='week-body';
+    (function(k){body.addEventListener('click',()=>openPanel(k));})(key);
+    [...os.slice(0,8),...acts.slice(0,2)].forEach(ev=>{
+      const chip=document.createElement('div'); chip.className='chip';
+      if(ev.color){const co=ACT_COLORS.find(c=>c.bg===ev.color)||ACT_COLORS[0];chip.style.cssText=`background:${co.bg};color:${co.bar}`;chip.textContent='✏ '+ev.titulo;}
+      else{const co=depColor(ev.sta);const sc=ST[calcStatus(ev)]||ST.pending;chip.style.cssText=`background:${co.bg};color:${co.text};border-left:2px solid ${co.bar}`;chip.textContent=`${sc.icon} ${ev.tc} ${ev.ci}`;}
+      body.appendChild(chip);
+    });
+    const total=os.length+acts.length;
+    const info=document.createElement('div'); info.style.cssText='font-size:.57rem;color:#9CA3AF;padding:2px 4px;margin-top:2px';
+    info.textContent=total>0?`${os.length} OS${acts.length?' + '+acts.length+' act':''}`:'Sin OS';
+    body.appendChild(info); col.appendChild(body); grid.appendChild(col);
+  }
+  if(lbl) lbl.textContent=`${l0} – ${l6}`;
+}
+
+// ── VISTA DIARIA ──────────────────────────────────────────────
+function renderDayView(){
+  const key=dateKey(dayViewDate);
+  const[y,m,d]=key.split('-').map(Number);
+  const hl=getHolidays(y);
+  curY=y; curM=m-1;
+  const title=document.getElementById('day-view-title');
+  const body=document.getElementById('day-view-body');
+  const lbl=document.getElementById('month-lbl');
+  if(title) title.textContent=`${DIAS[dayViewDate.getDay()]} ${d} de ${MESES[m-1]} ${y}${hl[key]?' 🎉':''}`;
+  if(lbl)   lbl.textContent=`${MESES[m-1]} ${y}`;
+  if(!body) return;
+  const os=(filtOS[key]||[]), acts=(actEv[key]||[]);
+  if(!os.length&&!acts.length){body.innerHTML='<div class="empty-msg">Sin órdenes ni actividades para este día.</div>';return;}
+  const ORD={reprog:0,cancel:1,pending:2,done:3};
+  const sorted=[...os].sort((a,b)=>(ORD[calcStatus(a)]??4)-(ORD[calcStatus(b)]??4));
+  body.innerHTML=sorted.map(ev=>osCardHTML(ev,key)).join('')+
+    acts.map(ev=>{const co=ACT_COLORS.find(c=>c.bg===ev.color)||ACT_COLORS[0];
+      return`<div class="os-card st-act" style="margin-bottom:8px"><div class="os-stripe" style="background:${co.bar}"></div><div class="os-body"><div class="os-type">✏ ${ev.titulo}</div><div class="os-loc">${ev.cuadrilla||''} ${ev.departamento||''}</div>${ev.obs?`<div class="os-obs">${ev.obs}</div>`:''}</div></div>`;
+    }).join('');
+}
+
+// ── PANEL DÍA ─────────────────────────────────────────────────
+function openPanel(key){
+  selDate=key;
+  const[y,m,d]=key.split('-').map(Number);
+  const dt=new Date(y,m-1,d), hl=getHolidays(y);
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v||''};
+  set('panel-title',`${DIAS[dt.getDay()]} ${d} de ${MESES[m-1]} ${y}`);
+  set('panel-sub',hl[key]?`🎉 Festivo: ${hl[key]}`:'');
+  const os=filtOS[key]||[], acts=actEv[key]||[];
+  const c=ds=>os.filter(e=>calcStatus(e)===ds).length;
+  const kpis=document.getElementById('panel-kpis');
+  if(kpis) kpis.innerHTML=`<span class="pk-done">✅ ${c('done')}</span><span class="pk-reprog">🔄 ${c('reprog')}</span><span class="pk-cancel">❌ ${c('cancel')}</span><span class="pk-pend">⏳ ${c('pending')}</span>${acts.length?`<span class="pk-act">✏ ${acts.length}</span>`:''}`;
+  document.getElementById('day-search').value='';
+  renderPaneContent();
+  renderCalendar();
+  document.getElementById('overlay').classList.add('open');
+}
+
+function renderPaneContent(){if(activeTab==='os')renderOSList(selDate);else if(activeTab==='act')renderActList(selDate);else renderHistList();}
+
+function switchTab(t){
+  activeTab=t;
+  ['os','act','hist'].forEach(x=>{
+    const p=document.getElementById('pane-'+x);
+    const b=document.getElementById('tab-'+x);
+    if(p) p.style.display=x===t?'block':'none';
+    if(b) b.classList.toggle('active',x===t);
+  });
+  renderPaneContent();
+}
+
+function closePanelClick(e){if(e.target===document.getElementById('overlay'))closePanel();}
+function closePanel(){document.getElementById('overlay').classList.remove('open');selDate=null;clearActForm();renderCalendar();}
+
+// ── RENDER OS ─────────────────────────────────────────────────
+function renderOSList(key) {
+  const q=nrm(document.getElementById('day-search')?.value||'');
+  let evs=filtOS[key]||[];
+  if(q) evs=evs.filter(ev=>nrm([ev.ci,ev.sta,ev.tc,ev.op,ev.tec,ev.al,ev.des,ev.obs,ev.oid].join(' ')).includes(q));
+  const ORD={reprog:0,cancel:1,pending:2,done:3};
+  evs=[...evs].sort((a,b)=>(ORD[calcStatus(a)]??4)-(ORD[calcStatus(b)]??4));
+  const list=document.getElementById('os-list');
+  if(!list) return;
+  if(!evs.length){list.innerHTML=`<div class="empty-msg">${q?'Sin resultados para "'+q+'"':' Sin órdenes para este día.'}</div>`;return;}
+  list.innerHTML=evs.map(ev=>osCardHTML(ev,key)).join('');
+}
+
+function osCardHTML(ev, key) {
+  var ds=calcStatus(ev), sc=ST[ds]||ST.pending;
+  var co=depColor(ev.sta), mat=MAT[ev.mat||'']||MAT[''];
+  var isR=ds==='reprog', isC=ds==='cancel';
+  var emp=getEmpresa(ev);
+  var ei=empresaInfo(emp);
+  var chg=isChanged(ev.oid, ev.aid);
+  var readBy=getReadBy(ev.oid, ev.aid);
+
+  // Clase de tarjeta
+  var cardBorder=chg?'border:2px solid #F59E0B!important;background:#FFFBEB!important;box-shadow:0 0 12px rgba(245,158,11,.3)!important':
+                 (ds==='done')?'border-left:5px solid '+ST.done.bar+'!important;background:#ECFDF5!important':
+                 (ds==='reprog')?'border-left:5px solid '+ST.reprog.bar+'!important;background:#FFFBEB!important':
+                 (ds==='cancel')?'border-left:5px solid '+ST.cancel.bar+'!important;background:#FEF2F2!important':
+                 emp==='kt'?'border-left:5px solid #2563EB!important;background:#EFF6FF!important':
+                 emp==='usr'?'border-left:5px solid #F59E0B!important;background:#FFFBEB!important':
+                 emp==='eb'?'border-left:5px solid #7028AE!important':
+                 'border-left:5px solid '+ei.bar+'!important;background:'+ei.bg+'!important';
+  
+  var mot='';
+  if((isR||isC)&&(ev.cr||ev.co)){
+    mot='<div class="motivo '+(isR?'rpg':'cnl')+'"><strong>'+(ev.cr||'')+'</strong>'+(ev.co&&ev.co!==ev.cr?'<br><small>'+ev.co.substring(0,200)+'</small>':'')+'</div>';
+  }
+
+  // Header empresa
+  var empHeader='';
+  if(emp==='kt'){
+    empHeader='<div class="kt-header"><svg width="18" height="18" viewBox="0 0 22 22"><rect width="22" height="22" rx="3" fill="white"/><path d="M4 3L4 19M4 11L16 3M4 11L16 19" stroke="#2563EB" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="kt-header-txt">kantiA</span></div>';
+  } else if(emp==='eb'){
+    empHeader='<div class="eb-header"><svg height="16" viewBox="0 0 110 28"><text x="0" y="22" font-family="Arial Black,sans-serif" font-size="22" font-weight="900" fill="#FF7900">ener</text><text x="52" y="22" font-family="Arial Black,sans-serif" font-size="22" font-weight="900" fill="white">Bit</text></svg></div>';
+  } else if(emp==='usr'){
+    empHeader='<div style="background:#F59E0B;padding:3px 10px;margin:-10px -13px 8px -18px;"><span style="font-size:.6rem;font-weight:700;color:#fff">✏ OS Manual</span></div>';
+  } else {
+    empHeader='<div style="background:'+ei.bar+';padding:3px 10px;margin:-10px -13px 8px -18px;"><span style="font-size:.6rem;font-weight:700;color:#fff">'+ei.label+'</span></div>';
+  }
+
+  // Badge cambio animado
+  var changeBadge=chg?'<span class="changed-badge">🔔 '+(changedOS[ev.oid+'|'+ev.aid]||{}).campo+' cambiado</span>':'';
+
+  var estOpts=[''].concat(Object.keys(ST)).map(function(v){
+    var s=v?ST[v]:null;
+    return '<option value="'+v+'"'+(ev.em_m===v?' selected':'')+'>'+(s?s.icon+' '+s.label:'Sin override')+'</option>';
+  }).join('');
+  var matOpts=Object.entries(MAT).map(function(e){
+    return '<option value="'+e[0]+'"'+((ev.mat||'')===e[0]?' selected':'')+'>'+e[1].label+'</option>';
+  }).join('');
+  var depTag='<span class="tag" style="background:'+co.bg+';color:'+co.text+';border:1px solid '+co.bar+'40">◼ '+ev.sta+'</span>';
+
+  // Botones leído - solo aparecen si hay cambio
+  var readBtns=chg?('<div class="read-btn-wrap">'+
+    '<span style="font-size:.62rem;color:#92400E;font-weight:700">🔔 Marcar leído:</span>'+
+    ['eB','kT','Aliado'].map(function(r){
+      var done=readBy.includes(r);
+      var cls='read-btn '+(r==='eB'?'read-eb':r==='kT'?'read-kt':'read-al')+(done?' read-done':'');
+      return '<button class="'+cls+'" onclick="markRead(\''+ev.oid+'\',\''+ev.aid+'\',\''+r+'\')">'+(done?'✓ ':'')+r+'</button>';
+    }).join('')+
+  '</div>'):'';
+
+  return '<div class="os-card" id="oscard-'+encodeURIComponent(ev.oid+'|'+ev.aid)+'" style="'+cardBorder+';border-radius:8px;overflow:hidden;display:flex;margin-bottom:8px;'+(chg?'animation:cardPulse 2s infinite':'')+'">'+
+    '<label class="os-check-wrap" onclick="event.stopPropagation()"><input type="checkbox" '+(selectedOS.has(osKey(ev.oid,ev.aid))?'checked':'')+' onchange="toggleSelectOS(\''+ev.oid+'\',\''+ev.aid+'\',event)"></label>'+
+    '<div style="width:5px;flex-shrink:0;background:'+(chg?'#F59E0B':emp==='kt'?'#2563EB':emp==='eb'?'#7028AE':ei.bar)+(chg?';animation:stripeFlash 1.2s infinite':'')+'"></div>'+
+    '<div class="os-body" style="flex:1;min-width:0;padding:10px 13px">'+
+      empHeader+
+      '<div class="os-head">'+
+        '<span class="os-type">'+sc.icon+' '+(ev.tc||'')+'</span>'+
+        (ev.ti?'<span class="os-time">⏰'+ev.ti+'</span>':'')+
+        '<span class="os-id">#'+(ev.oid||'').slice(-8)+'</span>'+
+        changeBadge+
+      '</div>'+
+      '<div class="os-idline" style="font-size:.68rem;color:var(--gy);margin:2px 0 6px;word-break:break-word" title="'+(ev.oid||'')+'">'+
+        '🔑 '+(ev.oid||'—')+' · '+(ev.dir?ev.dir:'<i>Sin dirección</i>')+' · '+(ev.em?ev.em:'<i>Sin correo</i>')+
+      '</div>'+
+      '<div class="os-loc">📍 '+(ev.ci||'')+(ev.sta?', '+ev.sta:'')+(ev.dir?' — '+ev.dir:'')+
+        '<br>👷 '+(ev.op||'')+(ev.cert?'<br>📄 Acta: '+ev.cert:'')+'</div>'+
+      (ev.des?'<div class="os-obs">'+ev.des+'</div>':'')+
+      (ev.obs?'<div class="os-obs">'+ev.obs+'</div>':'')+mot+
+      '<div class="os-tags">'+
+        '<span class="tag '+sc.tag+'">'+sc.icon+' '+sc.label+'</span>'+
+        depTag+
+        '<span class="tag '+(ei.badge||'')+'"'+(ei.sty?' style="'+ei.sty+'"':'')+'>'+ei.label+'</span>'+
+        (ev.mat?'<span class="tag" style="background:'+mat.bg+';color:'+mat.cl+'">'+mat.label+'</span>':'')+
+      '</div>'+
+      (ev.nt_m?'<div class="os-nota">📌 '+ev.nt_m+'</div>':'')+
+      readBtns+
+      '<div class="edit-section">'+
+        '<div class="edit-row"><label>Estado</label>'+
+          '<select class="edit-select" id="est-'+ev.oid+'-'+ev.aid+'">'+estOpts+'</select>'+
+          '<button class="save-btn" onclick="saveEstado(\''+ev.oid+'\',\''+ev.aid+'\')">💾</button></div>'+
+        '<div class="edit-row"><label>Material</label>'+
+          '<select class="edit-select" id="mat-'+ev.oid+'-'+ev.aid+'">'+matOpts+'</select>'+
+          '<button class="save-btn" onclick="saveMaterial(\''+ev.oid+'\',\''+ev.aid+'\')">💾</button></div>'+
+        '<div class="nota-wrap">'+
+          '<textarea id="nota-'+ev.oid+'-'+ev.aid+'" placeholder="Escribe una nota...">'+(ev.nt_m||'')+'</textarea>'+
+          '<div class="nota-actions">'+
+            '<button class="btn btn-secondary btn-sm" onclick="saveNota(\''+ev.oid+'\',\''+ev.aid+'\')">💾 Guardar nota</button>'+
+            '<button class="btn btn-secondary btn-sm" onclick="openMvModal(\''+ev.oid+'\',\''+ev.aid+'\',\''+key+'\')">📅 Nueva fecha</button>'+
+            '<button class="btn btn-danger btn-sm" onclick="deleteOS(\''+ev.oid+'\',\''+ev.aid+'\')">🗑 Eliminar</button>'+
+          '</div></div>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+
+
+// ── GUARDAR CAMBIOS ───────────────────────────────────────────
+function patchOS(oid, aid, fields) {
+  Object.values(osIdx).flat().forEach(ev=>{if(ev.oid===oid&&ev.aid===aid)Object.assign(ev,fields);});
+  applyFilters();
+  // Persistir cambio en localStorage
+  try { saveToLocalStorage(); } catch(e){}
+}
+
+async function saveEstado(oid,aid){
+  const val=document.getElementById(`est-${oid}-${aid}`)?.value||'';
+  patchOS(oid,aid,{em_m:val});
+  renderOSList(selDate);
+  const d=await gasPost({action:'updateOSEstado',order_id:oid,assignee_id:aid,estado_manual:val});
+  toast(d?.ok?'Estado guardado ✓':' Estado guardado (local)','ok');
+}
+
+async function saveMaterial(oid,aid){
+  const val=document.getElementById(`mat-${oid}-${aid}`)?.value||'';
+  patchOS(oid,aid,{mat:val});
+  const d=await gasPost({action:'updateOSMaterial',order_id:oid,assignee_id:aid,material_estado:val});
+  toast(d?.ok?'Material guardado ✓':' Material guardado (local)','ok');
+}
+
+async function saveNota(oid,aid){
+  const val=document.getElementById(`nota-${oid}-${aid}`)?.value||'';
+  patchOS(oid,aid,{nt_m:val});
+  renderOSList(selDate);
+  const d=await gasPost({action:'updateOSNota',order_id:oid,assignee_id:aid,nota_manual:val});
+  toast(d?.ok?'Nota guardada ✓':' Nota guardada (local)','ok');
+}
+
+async function deleteOS(oid,aid){
+  if(!confirm('¿Eliminar esta OS?')) return;
+  Object.keys(osIdx).forEach(date=>{osIdx[date]=osIdx[date].filter(e=>!(e.oid===oid&&e.aid===aid));});
+  applyFilters(); renderOSList(selDate);
+  await gasPost({action:'deleteOS',order_id:oid,assignee_id:aid});
+  toast('OS eliminada','ok');
+}
+
+// ── MOVER OS ─────────────────────────────────────────────────
+function openMvModal(oid,aid,currentDate){
+  document.getElementById('mv-oid').value=oid;
+  document.getElementById('mv-aid').value=aid;
+  document.getElementById('mv-fecha').value=currentDate||selDate||'';
+  document.getElementById('mv-hora').value='';
+  document.getElementById('mv-modal').classList.add('open');
+}
+function closeMvModal(){document.getElementById('mv-modal').classList.remove('open');}
+async function confirmMover(){
+  const oid=document.getElementById('mv-oid').value;
+  const aid=document.getElementById('mv-aid').value;
+  const newDate=document.getElementById('mv-fecha').value;
+  const hora=document.getElementById('mv-hora').value;
+  if(!newDate){toast('Selecciona una fecha','err');return;}
+  moverOS(oid,aid,newDate,hora);
+  closeMvModal();
+  await gasPost({action:'updateOSFecha',order_id:oid,assignee_id:aid,fecha:newDate,hora:hora});
+  toast('OS movida ✓','ok');
+}
+
+function moverOS(oid,aid,newDate,hora){
+  let ev=null;
+  Object.keys(osIdx).forEach(date=>{
+    const i=osIdx[date].findIndex(e=>e.oid===oid&&e.aid===aid);
+    if(i>=0){ev=Object.assign({},osIdx[date][i]);osIdx[date].splice(i,1);if(!osIdx[date].length)delete osIdx[date];}
+  });
+  if(!ev) return;
+  if(hora) ev.ti=hora;
+  if(!osIdx[newDate]) osIdx[newDate]=[];
+  osIdx[newDate].push(ev);
+  applyFilters();
+  if(selDate) renderOSList(selDate);
+}
+
+// ── DRAG & DROP ───────────────────────────────────────────────
+let dragOid='',dragAid='',dragFrom='';
+function dDragStart(e,oid,aid,date){dragOid=oid;dragAid=aid;dragFrom=date;e.dataTransfer.effectAllowed='move';}
+function dDragOver(e){e.preventDefault();e.currentTarget.classList.add('drag-over');}
+function dDragLeave(e){e.currentTarget.classList.remove('drag-over');}
+function dDrop(e,targetDate){
+  e.preventDefault();e.currentTarget.classList.remove('drag-over');
+  if(!dragOid||dragFrom===targetDate) return;
+  moverOS(dragOid,dragAid,targetDate,'');
+  gasPost({action:'updateOSFecha',order_id:dragOid,assignee_id:dragAid,fecha:targetDate}).then(()=>{});
+  toast(`OS movida a ${targetDate}`,'ok');
+  dragOid='';dragAid='';dragFrom='';
+}
+
+// ── ACTIVIDADES ───────────────────────────────────────────────
+function renderActList(key){
+  const evs=actEv[key]||[];
+  const list=document.getElementById('act-list');
+  if(!list) return;
+  if(!evs.length){list.innerHTML='<div class="empty-msg">Sin actividades. Agrega una abajo.</div>';return;}
+  list.innerHTML=evs.map(ev=>{
+    const co=ACT_COLORS.find(c=>c.bg===ev.color)||ACT_COLORS[0];
+    return`<div class="os-card st-act"><div class="os-stripe" style="background:${co.bar}"></div>
+      <div class="os-body"><div class="os-type">✏ ${ev.titulo}</div>
+        <div class="os-loc">${ev.cuadrilla?'👷 '+ev.cuadrilla:''}${ev.departamento?' 📍 '+ev.departamento:''}${ev.hora?'<br>⏰ '+ev.hora:''}</div>
+        ${ev.obs?`<div class="os-obs">${ev.obs}</div>`:''}
+      </div>
+      <div style="display:flex;gap:5px;padding:10px 10px 10px 0;flex-shrink:0">
+        <button class="btn btn-secondary btn-sm" onclick="editActForm('${ev.id}')">✏</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteAct('${ev.id}')">🗑</button>
+      </div></div>`;
+  }).join('');
+}
+
+function buildColorPicker(){
+  const p=document.getElementById('color-picker'); if(!p) return;
+  ACT_COLORS.forEach((c,i)=>{
+    const sw=document.createElement('div'); sw.className='color-swatch'+(i===0?' active':'');
+    sw.style.background=c.bar;
+    sw.onclick=()=>{selActColor=c.bg;document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('active'));sw.classList.add('active');};
+    p.appendChild(sw);
+  });
+}
+
+function clearActForm(){
+  ['f-titulo','f-cuadrilla','f-depto-act','f-hora-act','f-obs-act'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  editActId=null;selActColor=ACT_COLORS[0].bg;
+  document.querySelectorAll('.color-swatch').forEach((s,i)=>s.classList.toggle('active',i===0));
+  const btn=document.getElementById('save-act-btn');if(btn)btn.textContent='Guardar actividad';
+}
+
+function editActForm(id){
+  const ev=(actEv[selDate]||[]).find(e=>e.id===id); if(!ev) return;
+  const set=(elId,v)=>{const el=document.getElementById(elId);if(el)el.value=v||''};
+  set('f-titulo',ev.titulo);set('f-cuadrilla',ev.cuadrilla);
+  set('f-depto-act',ev.departamento);set('f-hora-act',ev.hora);set('f-obs-act',ev.obs);
+  editActId=id;selActColor=ev.color||ACT_COLORS[0].bg;
+  const ci=ACT_COLORS.findIndex(c=>c.bg===selActColor);
+  document.querySelectorAll('.color-swatch').forEach((s,i)=>s.classList.toggle('active',i===ci));
+  const btn=document.getElementById('save-act-btn');if(btn)btn.textContent='Actualizar actividad';
+}
+
+async function saveActForm(){
+  const titulo=document.getElementById('f-titulo')?.value.trim(); if(!titulo){toast('El título es obligatorio','err');return;}
+  if(!actEv[selDate]) actEv[selDate]=[];
+  const act={
+    id:editActId||`act-${Date.now()}`,
+    titulo, fecha:selDate,
+    cuadrilla:document.getElementById('f-cuadrilla')?.value.trim()||'',
+    departamento:document.getElementById('f-depto-act')?.value.trim()||'',
+    hora:document.getElementById('f-hora-act')?.value||'',
+    obs:document.getElementById('f-obs-act')?.value.trim()||'',
+    color:selActColor
+  };
+  if(editActId){const i=actEv[selDate].findIndex(e=>e.id===editActId);if(i>=0)actEv[selDate][i]=act;}
+  else actEv[selDate].push(act);
+  clearActForm(); renderActList(selDate); updateKPIs(); renderCalendar();
+  saveToLocalStorage();
+  const d=await gasPost({action:'saveActividad',...act});
+  toast(editActId?'Actividad actualizada ✓':'Actividad guardada ✓','ok');
+}
+
+async function deleteAct(id){
+  if(!confirm('¿Eliminar esta actividad?')) return;
+  actEv[selDate]=(actEv[selDate]||[]).filter(e=>e.id!==id);
+  renderActList(selDate); updateKPIs(); renderCalendar();
+  await gasPost({action:'deleteActividad',id});
+  toast('Actividad eliminada','ok');
+}
+
+// ── HISTORIAL ─────────────────────────────────────────────────
+function renderHistList(){
+  const list=document.getElementById('hist-list'); if(!list) return;
+  list.innerHTML='<div class="empty-msg">El historial se registra en Google Sheets.<br>Consulta la hoja "Historial" en tu Spreadsheet.</div>';
+}
+
+// ── CREAR OS ─────────────────────────────────────────────────
+function openCreateOS(){
+  const fechaEl=document.getElementById('cr-fecha');
+  if(fechaEl) fechaEl.value=selDate||dateKey(new Date());
+  renderEmpresaOptions();
+  selectEmpresa('eb');
+  document.getElementById('create-modal').classList.add('open');
+}
+function closeCreateOS(){
+  document.getElementById('create-modal').classList.remove('open');
+  ['cr-ciudad','cr-depto','cr-dir','cr-tec','cr-desc'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+}
+function selectEmpresa(e){
+  empresa=e;
+  document.querySelectorAll('#logo-eb, #logo-kt, #emp-extra .logo-opt').forEach(function(el){
+    el.classList.toggle('active', el.dataset.emp===e);
+  });
+  var info=empresaInfo(e);
+  document.getElementById('cm-header').style.background=info.bar;
+  document.getElementById('cr-save-btn').style.background=info.bar;
+}
+async function saveCreateOS(){
+  const fecha=document.getElementById('cr-fecha')?.value;
+  const city=document.getElementById('cr-ciudad')?.value.trim();
+  const sta=document.getElementById('cr-depto')?.value.trim();
+  if(!fecha){toast('La fecha es obligatoria','err');return;}
+  if(!city||!sta){toast('Ciudad y departamento son obligatorios','err');return;}
+  const uid='manual-'+Date.now().toString(36);
+  const estado=document.getElementById('cr-estado')?.value||'pending';
+  const ev={
+    oid:uid, aid:uid+'-a',
+    st:estado==='done'?'done':estado==='cancel'?'cancel':'pending',
+    em_m:estado, ci:city, sta, fecha,
+    tc:document.getElementById('cr-tipo')?.value||'',
+    tn:document.getElementById('cr-tipo')?.value||'',
+    op:document.getElementById('cr-tec')?.value.trim()||empresaInfo(empresa).label,
+    em:'', al:document.getElementById('cr-aliado')?.value||'',
+    emp:empresa,
+    tec:document.getElementById('cr-tec')?.value.trim()||'',
+    dir:document.getElementById('cr-dir')?.value.trim()||'',
+    cert:'', des:document.getElementById('cr-desc')?.value.trim()||'',
+    obs:'', cr:'', co:'',
+    ti:document.getElementById('cr-hora')?.value||'',
+    nt_m:'', mat:'',
+  };
+  if(sta&&!depColorMap[sta]){depColor(sta);allDeps=[...new Set([...allDeps,sta])].sort();buildMSList('dep',allDeps);}
+  if(!osIdx[fecha]) osIdx[fecha]=[];
+  osIdx[fecha].push(ev);
+  buildFilters(); applyFilters(); closeCreateOS();
+  toast('OS creada ✓','ok');
+  if(document.getElementById('cal-screen').style.display==='block') setTimeout(()=>openPanel(fecha),200);
+  pushFullDatasetToGAS();
+}
+
+// ── EXPORT PNG ────────────────────────────────────────────────
+async function exportDayPNG(){
+  if(!selDate) return;
+  const[y,m,d]=selDate.split('-').map(Number);
+  const dt=new Date(y,m-1,d), hl=getHolidays(y);
+  const os=(filtOS[selDate]||[]).slice(0,20), acts=actEv[selDate]||[];
+  const ORD={reprog:0,cancel:1,pending:2,done:3};
+  const sorted=[...os].sort((a,b)=>(ORD[calcStatus(a)]??4)-(ORD[calcStatus(b)]??4));
+  const BAR={done:'#059669',reprog:'#F59E0B',cancel:'#DC2626',pending:'#2563EB'};
+  const BGG={done:'#D1FAE5',reprog:'#FEF3C7',cancel:'#FEE2E2',pending:'#DBEAFE'};
+  const BCL={done:'#065F46',reprog:'#92400E',cancel:'#991B1B',pending:'#1E40AF'};
+  const card=document.createElement('div');
+  card.style.cssText='position:fixed;left:-9999px;top:0;width:500px;background:#fff;font-family:Segoe UI,sans-serif;border-radius:12px;overflow:hidden;';
+  card.innerHTML=`<div style="background:#501C7C;padding:14px 18px;color:#fff">
+    <div style="font-size:.6rem;opacity:.7;text-transform:uppercase">enerBit · kantiA · Calendario Operativo</div>
+    <div style="font-size:1.1rem;font-weight:800;margin-top:2px">${DIAS[dt.getDay()]} ${d} de ${MESES[m-1]} ${y}</div>
+    <div style="display:flex;gap:7px;margin-top:5px;font-size:.66rem;flex-wrap:wrap">
+      ${['done','reprog','cancel','pending'].map(ds=>`<span style="background:${BGG[ds]};color:${BCL[ds]};padding:2px 8px;border-radius:9px">${ST[ds].icon} ${os.filter(e=>calcStatus(e)===ds).length}</span>`).join('')}
+    </div></div>
+    ${hl[selDate]?`<div style="background:#FEF3C7;color:#78350F;font-size:.65rem;font-weight:700;padding:5px 14px">🎉 Festivo: ${hl[selDate]}</div>`:''}
+    ${sorted.map(ev=>{const ds=calcStatus(ev),co=depColor(ev.sta);
+      return`<div style="display:flex;gap:7px;padding:7px 14px;border-bottom:1px solid #F3F4F6;align-items:flex-start">
+        <div style="width:5px;background:${BAR[ds]};border-radius:3px;flex-shrink:0;min-height:24px"></div>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:.81rem;color:#1F2937">${ST[ds].icon} ${ev.tc}${ev.ti?' · ⏰'+ev.ti:''}  — ${ev.ci}</div>
+          <div style="font-size:.68rem;color:#6B7280">👷 ${ev.op||'–'}</div>
+          ${ev.nt_m?`<div style="font-size:.63rem;color:#501C7C;border-left:2px solid #7028AE;padding-left:5px;margin-top:2px">📌 ${ev.nt_m}</div>`:''}
+          <div style="display:flex;gap:5px;margin-top:3px">
+            <span style="font-size:.59rem;padding:1px 6px;border-radius:7px;background:${BGG[ds]};color:${BCL[ds]};font-weight:700">${ST[ds].label}</span>
+            <span style="font-size:.59rem;padding:1px 6px;border-radius:7px;background:${co.bg};color:${co.text};font-weight:700">◼ ${ev.sta}</span>
+          </div>
+        </div></div>`;}).join('')}
+    <div style="padding:7px 14px;background:#F9FAFB;font-size:.59rem;color:#9CA3AF;text-align:right">Exportado ${new Date().toLocaleString('es-CO')}</div>`;
+  document.body.appendChild(card);
+  try{const cv=await html2canvas(card,{scale:2,useCORS:true,backgroundColor:'#fff'});document.body.removeChild(card);const a=document.createElement('a');a.download=`operativo_${selDate}.png`;a.href=cv.toDataURL('image/png');a.click();toast('Imagen lista 📷','ok');}
+  catch(e){document.body.removeChild(card);toast('Error al exportar','err');}
+}
+
+async function exportMonthPNG(){
+  try{
+    const wrap=document.querySelector('.cal-wrap')||document.getElementById('view-month');
+    if(!wrap){toast('Vista mensual no disponible','err');return;}
+    const cv=await html2canvas(wrap,{scale:2,useCORS:true,backgroundColor:'#fff'});
+    const a=document.createElement('a');a.download=`calendario_${MESES[curM]}_${curY}.png`;a.href=cv.toDataURL('image/png');a.click();
+    toast('Mes exportado 📷','ok');
+  }catch(e){toast('Error al exportar','err');}
+}
+
+// ── UTILIDADES ────────────────────────────────────────────────
+function setSyncUI(state,msg){
+  const dot=document.getElementById('sync-dot'), lbl=document.getElementById('sync-lbl');
+  if(dot) dot.className='sync-dot'+(state==='busy'?' busy':state==='ok'?' ok':state==='err'?' err':'');
+  if(lbl) lbl.textContent=msg||'';
+}
+
+// ── DEBOUNCE (evita recalcular el calendario en cada tecla) ────
+var _debounceTimers = {};
+function debounce(key, fn, wait){
+  clearTimeout(_debounceTimers[key]);
+  _debounceTimers[key] = setTimeout(fn, wait);
+}
+
+function setProg(pct,msg){
+  const bar=document.getElementById('prog-bar');
+  if(!bar) return;
+  if(pct===null){bar.classList.remove('show');return;}
+  bar.classList.add('show');
+  const fill=document.getElementById('prog-fill');
+  const msgEl=document.getElementById('prog-msg');
+  const pctEl=document.getElementById('prog-pct');
+  if(fill) fill.style.width=pct+'%';
+  if(msgEl) msgEl.textContent=msg||'';
+  if(pctEl) pctEl.textContent=pct+'%';
+}
+
+function toast(msg,type=''){
+  const t=document.getElementById('toast');
+  if(!t) return;
+  t.textContent=msg;t.className='toast show'+(type?' '+type:'');
+  setTimeout(()=>{t.className='toast';},3500);
+}
+
+// ═══════════ ASISTENTE DEL CALENDARIO (motor de reglas, sin IA externa) ═══════════
+let asstTab = 'preguntar';
+let asstDragged = false;
+
+function actualizarBadgeAsistente(){
+  const badge = document.getElementById('asst-badge');
+  if(!badge) return;
+  try {
+    const diag = ejecutarDiagnostico();
+    const n = diag.atrasadas.length;
+    if(n>0){
+      badge.textContent = n>99?'99+':n;
+      badge.style.display='flex';
+    } else {
+      badge.style.display='none';
+    }
+  } catch(e) { /* silencioso si aun no hay datos */ }
+}
+
+function configurarArrastreBoton() {
+  const btn = document.getElementById('asst-btn');
+  if(!btn) return;
+  try {
+    const pos = JSON.parse(localStorage.getItem('cal_asst_pos')||'null');
+    if(pos){ btn.style.left=pos.left; btn.style.top=pos.top; btn.style.right='auto'; btn.style.bottom='auto'; }
+    else { btn.style.right='24px'; btn.style.bottom='24px'; }
+  } catch(e){ btn.style.right='24px'; btn.style.bottom='24px'; }
+
+  let startX, startY, startLeft, startTop, dragging=false, moved=false;
+  function onDown(x,y){
+    dragging=true; moved=false;
+    const r=btn.getBoundingClientRect();
+    startX=x; startY=y; startLeft=r.left; startTop=r.top;
+  }
+  function onMove(x,y){
+    if(!dragging) return;
+    const dx=x-startX, dy=y-startY;
+    if(Math.abs(dx)>5||Math.abs(dy)>5) moved=true;
+    if(moved){
+      let nl=startLeft+dx, nt=startTop+dy;
+      nl=Math.max(4,Math.min(window.innerWidth-60,nl));
+      nt=Math.max(4,Math.min(window.innerHeight-60,nt));
+      btn.style.left=nl+'px'; btn.style.top=nt+'px';
+      btn.style.right='auto'; btn.style.bottom='auto';
+    }
+  }
+  function onUp(){
+    if(dragging && moved){
+      asstDragged=true;
+      try{ localStorage.setItem('cal_asst_pos', JSON.stringify({left:btn.style.left, top:btn.style.top})); }catch(e){}
+      setTimeout(()=>{asstDragged=false;}, 50);
+    }
+    dragging=false;
+  }
+  btn.addEventListener('mousedown', e=>{ onDown(e.clientX,e.clientY); e.preventDefault(); });
+  document.addEventListener('mousemove', e=>onMove(e.clientX,e.clientY));
+  document.addEventListener('mouseup', onUp);
+  btn.addEventListener('touchstart', e=>{ const t=e.touches[0]; onDown(t.clientX,t.clientY); }, {passive:true});
+  document.addEventListener('touchmove', e=>{ const t=e.touches[0]; onMove(t.clientX,t.clientY); }, {passive:true});
+  document.addEventListener('touchend', onUp);
+}
+
+function toggleAsistente(event){
+  if(asstDragged) return;
+  const panel = document.getElementById('asst-panel');
+  if(!panel) return;
+  const opening = !panel.classList.contains('open');
+  panel.classList.toggle('open');
+  if(opening){
+    panel.style.right='24px'; panel.style.bottom='90px'; panel.style.left='auto'; panel.style.top='auto';
+    switchAsstTab(asstTab);
+  }
+}
+
+function switchAsstTab(tab){
+  asstTab = tab;
+  document.querySelectorAll('.asst-tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab===tab); });
+  if(tab==='preguntar') renderAsstPreguntar();
+  else if(tab==='diagnostico') renderAsstDiagnostico();
+  else if(tab==='exportar') renderAsstExportar();
+  else if(tab==='config') renderAsstConfig();
+  else renderAsstMaterial();
+}
+
+function findingRowHTML(ev, fecha){
+  const f = fecha || Object.keys(osIdx).find(function(d){ return osIdx[d].includes(ev); });
+  const sc = ST[calcStatus(ev)]||ST.pending;
+  return '<div class="asst-finding" onclick="irYResaltarOS(\''+ev.oid+'\',\''+encodeURIComponent(ev.aid)+'\',\''+f+'\')">'+
+    '<div><b>'+sc.icon+' '+(ev.tc||'')+'</b> — '+(ev.ci||'')+(f?' · '+f:'')+'</div>'+
+    '<div style="color:var(--gy);font-size:.74rem">'+(ev.dir||ev.des||'').slice(0,70)+'</div>'+
+  '</div>';
+}
+
+function irYResaltarOS(oid, aid, fecha){
+  aid = decodeURIComponent(aid);
+  clearAllFilters();
+  toggleAsistente();
+  if(!fecha || fecha==='undefined'){
+    fecha = Object.keys(osIdx).find(function(d){ return osIdx[d].some(function(e){return e.oid===oid&&e.aid===aid;}); });
+  }
+  if(!fecha) { toast('No se encontró esa OS','err'); return; }
+  const p=fecha.split('-').map(Number);
+  curY=p[0]; curM=p[1]-1;
+  renderCalendar();
+  openPanel(fecha);
+  setTimeout(function(){
+    const el = document.getElementById('oscard-'+encodeURIComponent(oid+'|'+aid));
+    if(el){
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      el.classList.add('oscard-highlight');
+      setTimeout(function(){ el.classList.remove('oscard-highlight'); }, 3500);
+    }
+  }, 150);
+}
+
+// ── PREGUNTAR (lenguaje natural simple por palabras clave, sin IA externa) ──
+function renderAsstPreguntar(){
+  const body=document.getElementById('asst-body');
+  body.innerHTML =
+    '<div class="asst-input-row">'+
+      '<input type="text" id="asst-q" placeholder="Ej: ¿cuántas OS tiene Bogotá esta semana?" onkeydown="if(event.key===\'Enter\')askAsst()">'+
+      '<button onclick="askAsst()">Preguntar</button>'+
+    '</div>'+
+    '<div id="asst-answer"></div>';
+  document.getElementById('asst-q')?.focus();
+}
+
+function askAsst(){
+  const q = document.getElementById('asst-q')?.value||'';
+  if(!q.trim()) return;
+  const t = nrm(q);
+  const answerEl = document.getElementById('asst-answer');
+
+  // ¿Pregunta por duplicados? Mostrarlos aquí mismo, con opción de limpiar.
+  if(t.includes('duplicad')){
+    answerEl.innerHTML = renderDuplicadosHTML();
+    return;
+  }
+  // ¿Pide una gráfica de algún campo?
+  if(t.includes('grafic') || t.includes('grafica')){
+    const campo = detectarCampoGraficable(t);
+    if(campo){
+      answerEl.innerHTML = graficarCampoHTML(campo.key, campo.label);
+      return;
+    }
+  }
+  // ¿Pide comparar esta semana vs. la pasada?
+  if((t.includes('compar')||t.includes('vs')) && (t.includes('semana'))){
+    answerEl.innerHTML = compararSemanasHTML();
+    return;
+  }
+
+  const res = interpretarPregunta(q);
+  let html = '<div class="asst-answer">'+res.respuesta+'</div>';
+  if(res.matches && res.matches.length){
+    html += '<div class="asst-section-title">Resultados ('+res.matches.length+')</div>';
+    res.matches.slice(0,30).forEach(function(m){ html += findingRowHTML(m); });
+    if(res.matches.length>30) html += '<div class="asst-empty">…y '+(res.matches.length-30)+' más</div>';
+  }
+  answerEl.innerHTML = html;
+}
+
+// ── Graficar cualquier campo al vuelo (barras simples HTML/CSS, sin librerías) ──
+function detectarCampoGraficable(t){
+  const campos = [
+    {key:'ci', label:'ciudad', sinonimos:['ciudad','ciudades']},
+    {key:'sta', label:'departamento', sinonimos:['departamento','depto']},
+    {key:'al', label:'aliado', sinonimos:['aliado','contratista']},
+    {key:'tc', label:'tipo de OS', sinonimos:['tipo']},
+    {key:'estado', label:'estado', sinonimos:['estado']},
+  ];
+  return campos.find(function(c){ return c.sinonimos.some(function(s){ return t.includes(s); }); }) || null;
+}
+
+function graficarCampoHTML(campoKey, label){
+  const conteo = {};
+  Object.values(osIdx).flat().forEach(function(ev){
+    const val = campoKey==='estado' ? (ST[calcStatus(ev)]||ST.pending).label : (ev[campoKey]||'(sin dato)');
+    conteo[val] = (conteo[val]||0)+1;
+  });
+  const entries = Object.entries(conteo).sort(function(a,b){ return b[1]-a[1]; }).slice(0,12);
+  if(!entries.length) return '<div class="asst-empty">No hay datos para graficar por '+label+'</div>';
+  const max = entries[0][1];
+  let html = '<div class="asst-answer">OS por '+label+' (top '+entries.length+')</div>';
+  entries.forEach(function(e){
+    const pct = Math.round((e[1]/max)*100);
+    html += '<div style="margin-bottom:6px">'+
+      '<div style="display:flex;justify-content:space-between;font-size:.76rem"><span>'+e[0]+'</span><b>'+e[1]+'</b></div>'+
+      '<div style="background:#F3F4F6;border-radius:4px;height:10px;overflow:hidden"><div style="background:var(--pp);height:100%;width:'+pct+'%"></div></div>'+
+    '</div>';
+  });
+  return html;
+}
+
+// ── Comparar esta semana vs. la semana pasada ──
+function compararSemanasHTML(){
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const dow = hoy.getDay();
+  const inicioEsta = new Date(hoy); inicioEsta.setDate(hoy.getDate()-dow);
+  const finEsta = new Date(inicioEsta); finEsta.setDate(inicioEsta.getDate()+6);
+  const inicioPasada = new Date(inicioEsta); inicioPasada.setDate(inicioEsta.getDate()-7);
+  const finPasada = new Date(inicioPasada); finPasada.setDate(inicioPasada.getDate()+6);
+
+  function contarEnRango(desde, hasta){
+    const c = {done:0, cancel:0, reprog:0, pending:0, total:0};
+    Object.entries(osIdx).forEach(function(entry){
+      const p=entry[0].split('-').map(Number);
+      const fd=new Date(p[0],p[1]-1,p[2]);
+      if(fd>=desde && fd<=hasta){
+        entry[1].forEach(function(ev){ c[calcStatus(ev)]++; c.total++; });
+      }
+    });
+    return c;
+  }
+  const esta = contarEnRango(inicioEsta, finEsta);
+  const pasada = contarEnRango(inicioPasada, finPasada);
+
+  function delta(a,b){
+    const d=a-b;
+    if(d===0) return '<span style="color:var(--gy)">= igual</span>';
+    return d>0 ? '<span style="color:#065F46">▲ +'+d+'</span>' : '<span style="color:#991B1B">▼ '+d+'</span>';
+  }
+
+  return '<div class="asst-answer">'+
+    '<b>Esta semana</b> ('+dateKey(inicioEsta)+' a '+dateKey(finEsta)+') vs <b>semana pasada</b> ('+dateKey(inicioPasada)+' a '+dateKey(finPasada)+')<br><br>'+
+    'Total: '+esta.total+' '+delta(esta.total,pasada.total)+'<br>'+
+    'Ejecutadas: '+esta.done+' '+delta(esta.done,pasada.done)+'<br>'+
+    'Canceladas: '+esta.cancel+' '+delta(esta.cancel,pasada.cancel)+'<br>'+
+    'Reprogramadas: '+esta.reprog+' '+delta(esta.reprog,pasada.reprog)+'<br>'+
+    'Pendientes: '+esta.pending+' '+delta(esta.pending,pasada.pending)+
+  '</div>';
+}
+
+function interpretarPregunta(texto){
+  const t = nrm(texto);
+  let evs = [];
+  Object.entries(osIdx).forEach(function(entry){ entry[1].forEach(function(ev){ evs.push(ev); }); });
+
+  const ciudadesReales = [...new Set(evs.map(function(e){return e.ci;}).filter(Boolean))];
+  const deptosReales   = [...new Set(evs.map(function(e){return e.sta;}).filter(Boolean))];
+  const ciudadMatch = ciudadesReales.find(function(c){ return t.includes(nrm(c)); });
+  const deptoMatch  = deptosReales.find(function(d){ return t.includes(nrm(d)); });
+
+  let estadoMatch = null;
+  if(t.includes('pendiente')) estadoMatch='pending';
+  else if(t.includes('ejecutad')) estadoMatch='done';
+  else if(t.includes('cancelad')) estadoMatch='cancel';
+  else if(t.includes('reprogram')) estadoMatch='reprog';
+
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  let desde=null, hasta=null, etiquetaFecha='';
+  if(t.includes('hoy')){ desde=new Date(hoy); hasta=new Date(hoy); etiquetaFecha='hoy'; }
+  else if(t.includes('esta semana')){
+    const dow=hoy.getDay();
+    desde=new Date(hoy); desde.setDate(hoy.getDate()-dow);
+    hasta=new Date(desde); hasta.setDate(desde.getDate()+6);
+    etiquetaFecha='esta semana';
+  } else if(t.includes('este mes')){
+    desde=new Date(hoy.getFullYear(),hoy.getMonth(),1);
+    hasta=new Date(hoy.getFullYear(),hoy.getMonth()+1,0);
+    etiquetaFecha='este mes';
+  }
+
+  let matches = evs.slice();
+  if(ciudadMatch) matches = matches.filter(function(e){ return e.ci===ciudadMatch; });
+  if(deptoMatch)  matches = matches.filter(function(e){ return e.sta===deptoMatch; });
+  if(estadoMatch) matches = matches.filter(function(e){ return calcStatus(e)===estadoMatch; });
+  if(desde){
+    matches = matches.filter(function(e){
+      const f = Object.keys(osIdx).find(function(d){ return osIdx[d].includes(e); });
+      if(!f) return false;
+      const p=f.split('-').map(Number);
+      const fd=new Date(p[0],p[1]-1,p[2]);
+      return fd>=desde && fd<=hasta;
+    });
+  }
+
+  const huboFiltroEstructurado = !!(ciudadMatch||deptoMatch||estadoMatch||desde);
+  if(!huboFiltroEstructurado){
+    matches = evs.filter(function(e){
+      const full = nrm([e.oid,e.ci,e.sta,e.tc,e.op,e.tec,e.dir,e.des,e.obs,e.medidor,e.em].join(' '));
+      return full.includes(t);
+    });
+  }
+
+  const partes=[];
+  if(ciudadMatch) partes.push(ciudadMatch);
+  if(deptoMatch)  partes.push(deptoMatch);
+  if(estadoMatch) partes.push(ST[estadoMatch].label.toLowerCase());
+  if(etiquetaFecha) partes.push(etiquetaFecha);
+
+  let respuesta;
+  if(huboFiltroEstructurado){
+    respuesta = 'Encontré <b>'+matches.length+'</b> OS'+(partes.length?(' — '+partes.join(', ')):'');
+  } else if(matches.length){
+    respuesta = 'Encontré <b>'+matches.length+'</b> resultado(s) para "'+texto+'"';
+  } else {
+    respuesta = 'No encontré nada para "'+texto+'". Prueba con una ciudad, departamento, estado (pendiente/ejecutada/cancelada/reprogramada), "hoy", "esta semana", "este mes", o un ID de orden/dirección/correo.';
+  }
+  return { respuesta: respuesta, matches: matches };
+}
+
+// ── DIAGNÓSTICO (reglas: atrasadas + posibles duplicados) ──
+function ejecutarDiagnostico(){
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const atrasadas=[]; const porDireccion={}; const porTecnicoDia={}; const porAliadoTipo={};
+
+  Object.entries(osIdx).forEach(function(entry){
+    const fecha=entry[0];
+    const p=fecha.split('-').map(Number);
+    const fd=new Date(p[0],p[1]-1,p[2]);
+    entry[1].forEach(function(ev){
+      const st=calcStatus(ev);
+      if(st==='pending' && fd<hoy){
+        const diasAtraso = Math.round((hoy-fd)/86400000);
+        atrasadas.push({ev:ev, fecha:fecha, diasAtraso:diasAtraso});
+      }
+      if(ev.dir){
+        const key = ev.oid+'|'+nrm(ev.dir);
+        if(!porDireccion[key]) porDireccion[key]=[];
+        porDireccion[key].push({ev:ev, fecha:fecha});
+      }
+      // Sobrecarga de técnico/cuadrilla por día
+      const tecnico = ev.tec||ev.op||'';
+      if(tecnico){
+        const keyT = fecha+'|'+nrm(tecnico);
+        if(!porTecnicoDia[keyT]) porTecnicoDia[keyT]={tecnico:tecnico, fecha:fecha, items:[]};
+        porTecnicoDia[keyT].items.push(ev);
+      }
+      // Patrones repetidos: mismo aliado + mismo tipo, cancelada
+      if(st==='cancel'){
+        const aliado = ev.al||ev.em||'';
+        if(aliado){
+          const keyA = nrm(aliado)+'|'+nrm(ev.tc||'');
+          if(!porAliadoTipo[keyA]) porAliadoTipo[keyA]={aliado:aliado, tipo:ev.tc||'', items:[]};
+          porAliadoTipo[keyA].items.push({ev:ev, fecha:fecha});
+        }
+      }
+    });
+  });
+
+  const duplicadas=[];
+  const duplicadosExactos=[];
+  Object.values(porDireccion).forEach(function(grupo){
+    if(grupo.length>1){
+      const correos = [...new Set(grupo.map(function(g){return (g.ev.em||'').toLowerCase();}))];
+      if(correos.length>1) duplicadas.push(grupo);
+      else duplicadosExactos.push(grupo);
+    }
+  });
+
+  const UMBRAL_SOBRECARGA = 8;
+  const sobrecarga = Object.values(porTecnicoDia)
+    .filter(function(g){ return g.items.length > UMBRAL_SOBRECARGA; })
+    .sort(function(a,b){ return b.items.length-a.items.length; });
+
+  const UMBRAL_PATRON = 3;
+  const patrones = Object.values(porAliadoTipo)
+    .filter(function(g){ return g.items.length >= UMBRAL_PATRON; })
+    .sort(function(a,b){ return b.items.length-a.items.length; });
+
+  atrasadas.sort(function(a,b){ return b.diasAtraso-a.diasAtraso; });
+  return { atrasadas:atrasadas, duplicadas:duplicadas, duplicadosExactos:duplicadosExactos, sobrecarga:sobrecarga, patrones:patrones };
+}
+
+// ── Notas listas para copiar (WhatsApp/correo al aliado) ──
+function notaAtrasada(ev, fecha, dias){
+  return 'Hola, la OS "'+(ev.tc||'')+'" en '+(ev.dir||ev.ci||'sin dirección')+', '+(ev.ci||'')+
+    ', lleva '+dias+' día(s) atrasada (estaba programada para '+fecha+'). ¿Puedes darle prioridad? '+
+    'Orden: '+ev.oid;
+}
+function notaDuplicado(grupo){
+  const primero=grupo[0].ev;
+  const aliados=[...new Set(grupo.map(function(g){return g.ev.al||g.ev.em||'';}))];
+  return 'Hola, encontré '+grupo.length+' registros para la misma orden y dirección ('+
+    (primero.dir||primero.ci||'')+') con aliados distintos: '+aliados.join(' y ')+
+    '. ¿Puedes confirmar cuál es la asignación correcta? Orden: '+primero.oid;
+}
+function notaSobrecarga(g){
+  return 'Hola, el '+g.fecha+' tienes '+g.items.length+' OS asignadas ('+g.tecnico+
+    '). Si necesitas apoyo o reprogramar algunas, avísame para coordinar.';
+}
+function notaPatron(g){
+  return 'Hola, revisando el histórico, "'+g.aliado+'" tiene '+g.items.length+
+    ' OS canceladas de tipo "'+g.tipo+'". ¿Podemos revisar juntos qué está pasando ahí?';
+}
+async function copiarNotaAsst(btn, texto){
+  try {
+    await navigator.clipboard.writeText(texto);
+    toast('Nota copiada al portapapeles ✓','ok');
+  } catch(e) {
+    toast('No se pudo copiar automáticamente','err');
+  }
+}
+
+
+// ── Limpieza de duplicados exactos (bug de clave: misma orden+dirección+correo, varias tarjetas) ──
+function elegirMejorEv(grupo){
+  const prioridad = {done:4, cancel:3, reprog:2, pending:1};
+  return grupo.slice().sort(function(a,b){
+    var pa = prioridad[calcStatus(a.ev)]||0, pb = prioridad[calcStatus(b.ev)]||0;
+    if(pa!==pb) return pb-pa;
+    var camposA = Object.values(a.ev).filter(Boolean).length;
+    var camposB = Object.values(b.ev).filter(Boolean).length;
+    return camposB-camposA;
+  })[0];
+}
+function fusionarGrupoDuplicado(grupo){
+  const mejor = elegirMejorEv(grupo);
+  grupo.forEach(function(g){
+    if(g.ev===mejor.ev) return;
+    var arr = osIdx[g.fecha];
+    if(arr) osIdx[g.fecha] = arr.filter(function(e){ return e!==g.ev; });
+  });
+}
+async function fusionarUnGrupoAsst(idx, origen){
+  const diag = ejecutarDiagnostico();
+  const grupo = diag.duplicadosExactos[idx];
+  if(!grupo) return;
+  fusionarGrupoDuplicado(grupo);
+  applyFilters();
+  if(selDate) renderPaneContent();
+  saveToLocalStorage();
+  await pushFullDatasetToGAS();
+  toast('Grupo fusionado ✓','ok');
+  if(origen==='preguntar'){
+    const answerEl=document.getElementById('asst-answer');
+    if(answerEl) answerEl.innerHTML = renderDuplicadosHTML();
+  } else {
+    renderAsstDiagnostico();
+  }
+}
+async function limpiarDuplicadosExactosAsst(origen){
+  const diag = ejecutarDiagnostico();
+  if(!diag.duplicadosExactos.length){ toast('No hay duplicados exactos para limpiar','ok'); return; }
+  const totalTarjetas = diag.duplicadosExactos.reduce(function(s,g){return s+g.length;},0);
+  const totalGrupos = diag.duplicadosExactos.length;
+  if(!confirm('Se encontraron '+totalGrupos+' grupos con '+totalTarjetas+' tarjetas en total. Se va a conservar 1 tarjeta por grupo (la de estado más avanzado: ejecutada > cancelada > reprogramada > pendiente) y borrar las otras '+(totalTarjetas-totalGrupos)+'. Esto afecta a todos los colaboradores y no se puede deshacer. ¿Continuar?')) return;
+  diag.duplicadosExactos.forEach(function(grupo){ fusionarGrupoDuplicado(grupo); });
+  applyFilters();
+  if(selDate) renderPaneContent();
+  saveToLocalStorage();
+  toast('Limpiando y sincronizando…','ok');
+  const ok = await pushFullDatasetToGAS();
+  toast(ok?'Duplicados limpiados y sincronizados ✓':'Duplicados limpiados (local; GAS offline)', ok?'ok':'err');
+  if(origen==='preguntar'){
+    const answerEl=document.getElementById('asst-answer');
+    if(answerEl) answerEl.innerHTML = renderDuplicadosHTML();
+  } else {
+    renderAsstDiagnostico();
+  }
+}
+
+// Vista de duplicados reutilizable desde la pestaña "Preguntar"
+function renderDuplicadosHTML(){
+  const diag = ejecutarDiagnostico();
+  const duplicadas = diag.duplicadas, duplicadosExactos = diag.duplicadosExactos;
+  let html = '<div class="asst-answer">Encontré <b>'+duplicadas.length+'</b> posible(s) reasignación y <b>'+duplicadosExactos.length+'</b> grupo(s) de duplicados exactos.</div>';
+
+  html += '<div class="asst-section-title">🔁 Posibles duplicados (distinto aliado — puede ser reasignación real) ('+duplicadas.length+')</div>';
+  if(!duplicadas.length){
+    html += '<div class="asst-empty">Ninguno</div>';
+  } else {
+    duplicadas.slice(0,15).forEach(function(grupo){
+      const primero=grupo[0];
+      const aliados=[...new Set(grupo.map(function(g){return g.ev.al||g.ev.em||'';}))];
+      html += '<div class="asst-finding" onclick="irYResaltarOS(\''+primero.ev.oid+'\',\''+encodeURIComponent(primero.ev.aid)+'\',\''+primero.fecha+'\')">'+
+        '<b>'+grupo.length+' tarjetas</b> — '+(primero.ev.tc||'')+' · '+(primero.ev.ci||'')+
+        '<div style="color:var(--gy);font-size:.74rem">'+(primero.ev.dir||'').slice(0,60)+' — aliados: '+aliados.join(', ')+'</div>'+
+      '</div>';
+    });
+    if(duplicadas.length>15) html += '<div class="asst-empty">…y '+(duplicadas.length-15)+' más — revisa la pestaña Diagnóstico para verlas todas</div>';
+  }
+
+  html += '<div class="asst-section-title">🧹 Duplicados exactos — bug de sincronización, mismo aliado ('+duplicadosExactos.length+')</div>';
+  if(!duplicadosExactos.length){
+    html += '<div class="asst-empty">Ninguno</div>';
+  } else {
+    html += '<div style="margin:8px 0"><button class="btn btn-primary btn-sm" onclick="limpiarDuplicadosExactosAsst(\'preguntar\')">🧹 Limpiar todos los duplicados exactos</button></div>';
+    duplicadosExactos.slice(0,15).forEach(function(grupo, idx){
+      const primero=grupo[0];
+      html += '<div class="asst-finding">'+
+        '<div onclick="irYResaltarOS(\''+primero.ev.oid+'\',\''+encodeURIComponent(primero.ev.aid)+'\',\''+primero.fecha+'\')" style="cursor:pointer">'+
+        '<b>'+grupo.length+' tarjetas</b> — '+(primero.ev.tc||'')+' · '+(primero.ev.ci||'')+
+        '<div style="color:var(--gy);font-size:.74rem">'+(primero.ev.dir||'').slice(0,60)+'</div></div>'+
+        '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();fusionarUnGrupoAsst('+idx+',\'preguntar\')">Fusionar este grupo</button>'+
+      '</div>';
+    });
+    if(duplicadosExactos.length>15) html += '<div class="asst-empty">…y '+(duplicadosExactos.length-15)+' más — usa "Limpiar todos" arriba, o ve a Diagnóstico para verlos todos</div>';
+  }
+  return html;
+}
+function renderAsstDiagnostico(){
+  const body=document.getElementById('asst-body');
+  const diag = ejecutarDiagnostico();
+  const atrasadas=diag.atrasadas, duplicadas=diag.duplicadas, duplicadosExactos=diag.duplicadosExactos, sobrecarga=diag.sobrecarga, patrones=diag.patrones;
+  let html='';
+
+  html += '<div class="asst-section-title">⏳ OS pendientes atrasadas ('+atrasadas.length+')</div>';
+  if(!atrasadas.length){
+    html += '<div class="asst-empty">Ninguna OS pendiente está atrasada 🎉</div>';
+  } else {
+    atrasadas.slice(0,25).forEach(function(a){
+      const sev = a.diasAtraso>7?'alta':a.diasAtraso>=3?'media':'baja';
+      const nota = notaAtrasada(a.ev, a.fecha, a.diasAtraso).replace(/'/g,"\\'");
+      html += '<div class="asst-finding">'+
+        '<div onclick="irYResaltarOS(\''+a.ev.oid+'\',\''+encodeURIComponent(a.ev.aid)+'\',\''+a.fecha+'\')" style="cursor:pointer">'+
+        '<span class="sev-'+sev+'">'+a.diasAtraso+' días</span> — '+(a.ev.tc||'')+' · '+(a.ev.ci||'')+
+        '<div style="color:var(--gy);font-size:.74rem">'+(a.ev.dir||'').slice(0,70)+'</div></div>'+
+        '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();copiarNotaAsst(this,\''+nota+'\')">📋 Copiar nota para el aliado</button>'+
+      '</div>';
+    });
+    if(atrasadas.length>25) html += '<div class="asst-empty">…y '+(atrasadas.length-25)+' más</div>';
+  }
+
+  html += '<div class="asst-section-title">🔁 Posibles duplicados (misma orden+dirección, distinto aliado) ('+duplicadas.length+')</div>';
+  if(!duplicadas.length){
+    html += '<div class="asst-empty">No encontré posibles duplicados</div>';
+  } else {
+    duplicadas.slice(0,20).forEach(function(grupo){
+      const primero=grupo[0];
+      const aliados=[...new Set(grupo.map(function(g){return g.ev.al||g.ev.em||'';}))];
+      const nota = notaDuplicado(grupo).replace(/'/g,"\\'");
+      html += '<div class="asst-finding">'+
+        '<div onclick="irYResaltarOS(\''+primero.ev.oid+'\',\''+encodeURIComponent(primero.ev.aid)+'\',\''+primero.fecha+'\')" style="cursor:pointer">'+
+        '<b>'+grupo.length+' tarjetas</b> — '+(primero.ev.tc||'')+' · '+(primero.ev.ci||'')+
+        '<div style="color:var(--gy);font-size:.74rem">'+(primero.ev.dir||'').slice(0,60)+' — aliados: '+aliados.join(', ')+'</div></div>'+
+        '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();copiarNotaAsst(this,\''+nota+'\')">📋 Copiar nota</button>'+
+      '</div>';
+    });
+    if(duplicadas.length>20) html += '<div class="asst-empty">…y '+(duplicadas.length-20)+' más</div>';
+  }
+
+  html += '<div class="asst-section-title">🧹 Duplicados exactos — bug de sincronización, mismo aliado ('+duplicadosExactos.length+')</div>';
+  if(!duplicadosExactos.length){
+    html += '<div class="asst-empty">No encontré duplicados exactos</div>';
+  } else {
+    html += '<div class="asst-empty" style="text-align:left">Misma orden+dirección+aliado con varias tarjetas — no es una reasignación real, es acumulación por cambios técnicos. Se puede limpiar de forma segura (conserva la de estado más avanzado).</div>';
+    html += '<div style="margin:8px 0"><button class="btn btn-primary btn-sm" onclick="limpiarDuplicadosExactosAsst()">🧹 Limpiar todos los duplicados exactos</button></div>';
+    duplicadosExactos.slice(0,15).forEach(function(grupo, idx){
+      const primero=grupo[0];
+      html += '<div class="asst-finding">'+
+        '<div onclick="irYResaltarOS(\''+primero.ev.oid+'\',\''+encodeURIComponent(primero.ev.aid)+'\',\''+primero.fecha+'\')" style="cursor:pointer">'+
+        '<b>'+grupo.length+' tarjetas</b> — '+(primero.ev.tc||'')+' · '+(primero.ev.ci||'')+
+        '<div style="color:var(--gy);font-size:.74rem">'+(primero.ev.dir||'').slice(0,60)+'</div></div>'+
+        '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();fusionarUnGrupoAsst('+idx+')">Fusionar este grupo</button>'+
+      '</div>';
+    });
+    if(duplicadosExactos.length>15) html += '<div class="asst-empty">…y '+(duplicadosExactos.length-15)+' más — usa "Limpiar todos"</div>';
+  }
+
+  html += '<div class="asst-section-title">👷 Técnico/cuadrilla con posible sobrecarga ('+sobrecarga.length+')</div>';
+  if(!sobrecarga.length){
+    html += '<div class="asst-empty">Ninguna sobrecarga detectada (más de 8 OS el mismo día)</div>';
+  } else {
+    sobrecarga.slice(0,15).forEach(function(g){
+      const nota = notaSobrecarga(g).replace(/'/g,"\\'");
+      html += '<div class="asst-finding">'+
+        '<div onclick="irYResaltarOS(\''+g.items[0].oid+'\',\''+encodeURIComponent(g.items[0].aid)+'\',\''+g.fecha+'\')" style="cursor:pointer">'+
+        '<span class="sev-alta">'+g.items.length+' OS</span> — '+g.tecnico+' · '+g.fecha+'</div>'+
+        '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();copiarNotaAsst(this,\''+nota+'\')">📋 Copiar nota</button>'+
+      '</div>';
+    });
+    if(sobrecarga.length>15) html += '<div class="asst-empty">…y '+(sobrecarga.length-15)+' más</div>';
+  }
+
+  html += '<div class="asst-section-title">📉 Patrones repetidos de cancelación ('+patrones.length+')</div>';
+  if(!patrones.length){
+    html += '<div class="asst-empty">Sin patrones repetidos (3+ canceladas del mismo aliado y tipo)</div>';
+  } else {
+    patrones.slice(0,15).forEach(function(g){
+      const nota = notaPatron(g).replace(/'/g,"\\'");
+      html += '<div class="asst-finding">'+
+        '<div onclick="irYResaltarOS(\''+g.items[0].ev.oid+'\',\''+encodeURIComponent(g.items[0].ev.aid)+'\',\''+g.items[0].fecha+'\')" style="cursor:pointer">'+
+        '<span class="sev-media">'+g.items.length+' canceladas</span> — '+g.aliado+' · '+g.tipo+'</div>'+
+        '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();copiarNotaAsst(this,\''+nota+'\')">📋 Copiar nota</button>'+
+      '</div>';
+    });
+    if(patrones.length>15) html += '<div class="asst-empty">…y '+(patrones.length-15)+' más</div>';
+  }
+
+  body.innerHTML = html;
+}
+
+// ── MATERIAL/NOTAS: subir Excel de medidores/material y aplicar por cruce ──
+let asstMaterialRows = null;
+let asstMaterialHeaders = [];
+
+let asstMaterialMode = 'masivo';
+
+function renderAsstMaterial(){
+  const body=document.getElementById('asst-body');
+  body.innerHTML =
+    '<div style="display:flex;gap:6px;margin-bottom:10px">'+
+      '<button class="btn btn-sm '+(asstMaterialMode==='masivo'?'btn-primary':'btn-ghost')+'" onclick="asstMaterialMode=\'masivo\';renderAsstMaterial()">📎 Archivo masivo</button>'+
+      '<button class="btn btn-sm '+(asstMaterialMode==='individual'?'btn-primary':'btn-ghost')+'" onclick="asstMaterialMode=\'individual\';renderAsstMaterial()">🔍 Buscar 1 OS</button>'+
+    '</div>'+
+    '<div id="asst-material-inner"></div>';
+  if(asstMaterialMode==='individual') renderAsstMaterialIndividual();
+  else renderAsstMaterialMasivo();
+}
+
+function renderAsstMaterialMasivo(){
+  const inner=document.getElementById('asst-material-inner');
+  if(!asstMaterialRows){
+    inner.innerHTML =
+      '<div class="asst-upload" onclick="document.getElementById(\'asst-file-input\').click()">'+
+        '📎 Sube el Excel/CSV de medidores o material<br>'+
+        '<small>Se busca por ID de orden, medidor, dirección, correo, nombre o fecha</small>'+
+      '</div>'+
+      '<input type="file" id="asst-file-input" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleAsstFile(this.files[0])">';
+    return;
+  }
+  const opts = ['(ninguna)'].concat(asstMaterialHeaders);
+  function guess(cands){
+    return asstMaterialHeaders.find(function(h){
+      return cands.some(function(c){ return nrm(h).includes(nrm(c)); });
+    }) || '(ninguna)';
+  }
+  function selectHTML(id, label, guessVal){
+    let sel = '<div class="asst-match-row"><span>'+label+'</span><select id="'+id+'">';
+    opts.forEach(function(o){
+      const val = o==='(ninguna)' ? '' : o;
+      sel += '<option value="'+val+'" '+(o===guessVal?'selected':'')+'>'+o+'</option>';
+    });
+    sel += '</select></div>';
+    return sel;
+  }
+  let html = '<div class="asst-section-title">Vincular columnas del archivo</div>';
+  html += selectHTML('asst-map-oid','ID de la orden', guess(['id orden','order_id']));
+  html += selectHTML('asst-map-dir','Dirección', guess(['direccion']));
+  html += selectHTML('asst-map-email','Correo', guess(['correo','email']));
+  html += selectHTML('asst-map-medidor','Medidor / Frt', guess(['medidor','frt','serial']));
+  html += selectHTML('asst-map-nombre','Nombre de usuario', guess(['nombre','usuario']));
+  html += selectHTML('asst-map-fecha','Fecha', guess(['fecha']));
+  html += '<div class="asst-section-title">Qué aplicar a las OS que coincidan</div>';
+  html += selectHTML('asst-map-material','Columna con estado de material', guess(['material','estado material']));
+  html += selectHTML('asst-map-nota','Columna con nota', guess(['nota','observacion']));
+  html += '<div style="margin-top:12px;display:flex;gap:8px">'+
+    '<button class="btn btn-primary btn-sm" onclick="ejecutarActualizacionMaterial()">Buscar y actualizar</button>'+
+    '<button class="btn btn-ghost btn-sm" onclick="asstMaterialRows=null;renderAsstMaterialMasivo()">Cambiar archivo</button>'+
+  '</div><div id="asst-material-result"></div>';
+  inner.innerHTML = html;
+}
+
+// ── Búsqueda y edición individual (1 OS a la vez, sin subir archivo) ──
+function renderAsstMaterialIndividual(){
+  const inner = document.getElementById('asst-material-inner');
+  inner.innerHTML =
+    '<div class="asst-section-title">Buscar OS (llena solo lo que tengas)</div>'+
+    '<div class="asst-match-row"><span>ID Orden</span><input type="text" id="asst-ind-oid" placeholder="ID de la orden"></div>'+
+    '<div class="asst-match-row"><span>Dirección</span><input type="text" id="asst-ind-dir" placeholder="Dirección"></div>'+
+    '<div class="asst-match-row"><span>Correo</span><input type="text" id="asst-ind-email" placeholder="Correo del aliado"></div>'+
+    '<div class="asst-match-row"><span>Medidor</span><input type="text" id="asst-ind-med" placeholder="Serial del medidor o Frt"></div>'+
+    '<div style="margin-top:10px"><button class="btn btn-primary btn-sm" onclick="buscarOSIndividual()">Buscar</button></div>'+
+    '<div id="asst-ind-result"></div>';
+}
+
+function buscarOSIndividual(){
+  const vOid = nrm(document.getElementById('asst-ind-oid')?.value||'');
+  const vDir = nrm(document.getElementById('asst-ind-dir')?.value||'');
+  const vEmail = nrm(document.getElementById('asst-ind-email')?.value||'');
+  const vMed = nrm(document.getElementById('asst-ind-med')?.value||'');
+
+  if(!vOid && !vDir && !vEmail && !vMed){ toast('Llena al menos un campo para buscar','err'); return; }
+
+  let candidatos=[];
+  Object.entries(osIdx).forEach(function(entry){
+    const fecha=entry[0];
+    entry[1].forEach(function(ev){ candidatos.push({ev:ev, fecha:fecha}); });
+  });
+
+  if(vOid)   candidatos = candidatos.filter(function(c){ return nrm(c.ev.oid).includes(vOid); });
+  if(vDir)   candidatos = candidatos.filter(function(c){ return nrm(c.ev.dir||'').includes(vDir); });
+  if(vEmail) candidatos = candidatos.filter(function(c){ return nrm(c.ev.em||'').includes(vEmail); });
+  if(vMed)   candidatos = candidatos.filter(function(c){
+    return (c.ev.medidor && nrm(c.ev.medidor).includes(vMed)) ||
+           nrm(c.ev.des||'').includes(vMed) || nrm(c.ev.obs||'').includes(vMed);
+  });
+
+  const resEl = document.getElementById('asst-ind-result');
+  if(!candidatos.length){ resEl.innerHTML = '<div class="asst-empty">No encontré ninguna OS con esos datos</div>'; return; }
+
+  let html = '<div class="asst-section-title">'+candidatos.length+' resultado(s) — clic en el título para ir y resaltar en el calendario</div>';
+  candidatos.slice(0,15).forEach(function(c){ html += renderAsstEditRow(c.ev, c.fecha); });
+  if(candidatos.length>15) html += '<div class="asst-empty">…y '+(candidatos.length-15)+' más — afina la búsqueda para ver el resto</div>';
+  resEl.innerHTML = html;
+}
+
+function renderAsstEditRow(ev, fecha){
+  const oid=ev.oid, aid=ev.aid;
+  const estOpts=[''].concat(Object.keys(ST)).map(function(v){
+    const s=v?ST[v]:null;
+    return '<option value="'+v+'"'+(ev.em_m===v?' selected':'')+'>'+(s?s.icon+' '+s.label:'Sin override')+'</option>';
+  }).join('');
+  const matOpts=Object.entries(MAT).map(function(e){
+    return '<option value="'+e[0]+'"'+((ev.mat||'')===e[0]?' selected':'')+'>'+e[1].label+'</option>';
+  }).join('');
+
+  return '<div class="asst-finding" style="cursor:default">'+
+    '<div onclick="irYResaltarOS(\''+oid+'\',\''+encodeURIComponent(aid)+'\',\''+fecha+'\')" style="cursor:pointer">'+
+      '<b>'+(ev.tc||'')+'</b> — '+(ev.ci||'')+' · '+fecha+
+      '<div style="color:var(--gy);font-size:.74rem">'+(ev.dir||'sin dirección')+' · '+(ev.em||'sin correo')+' · #'+(oid||'').slice(-8)+'</div>'+
+    '</div>'+
+    '<div class="asst-match-row"><span>Estado</span><select id="est-'+oid+'-'+aid+'">'+estOpts+'</select>'+
+      '<button class="btn btn-sm" onclick="saveEstadoAsst(\''+oid+'\',\''+aid+'\')">💾</button></div>'+
+    '<div class="asst-match-row"><span>Material</span><select id="mat-'+oid+'-'+aid+'">'+matOpts+'</select>'+
+      '<button class="btn btn-sm" onclick="saveMaterial(\''+oid+'\',\''+aid+'\')">💾</button></div>'+
+    '<div class="asst-match-row" style="flex-direction:column;align-items:stretch">'+
+      '<span>Nota</span>'+
+      '<textarea id="nota-'+oid+'-'+aid+'" rows="2" style="width:100%;font-size:.76rem;border:1px solid var(--bd);border-radius:6px;padding:4px;margin:4px 0">'+(ev.nt_m||'')+'</textarea>'+
+      '<button class="btn btn-sm" style="align-self:flex-end" onclick="saveNotaAsst(\''+oid+'\',\''+aid+'\')">💾 Guardar nota</button>'+
+    '</div>'+
+  '</div>';
+}
+
+// Variantes de saveEstado/saveNota que no dependen de que haya un panel de día
+// abierto (renderOSList requiere selDate) — usan patchOS + gasPost directo.
+async function saveEstadoAsst(oid,aid){
+  const val=document.getElementById(`est-${oid}-${aid}`)?.value||'';
+  patchOS(oid,aid,{em_m:val});
+  const d=await gasPost({action:'updateOSEstado',order_id:oid,assignee_id:aid,estado_manual:val});
+  toast(d?.ok?'Estado guardado ✓':' Estado guardado (local)','ok');
+}
+
+async function saveNotaAsst(oid,aid){
+  const val=document.getElementById(`nota-${oid}-${aid}`)?.value||'';
+  patchOS(oid,aid,{nt_m:val});
+  const d=await gasPost({action:'updateOSNota',order_id:oid,assignee_id:aid,nota_manual:val});
+  toast(d?.ok?'Nota guardada ✓':' Nota guardada (local)','ok');
+}
+
+function handleAsstFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    try {
+      const wb = XLSX.read(ev.target.result, {type:'binary', raw:false});
+      let best=wb.SheetNames[0], bestN=0;
+      wb.SheetNames.forEach(function(n){
+        const r = XLSX.utils.sheet_to_json(wb.Sheets[n], {defval:'', raw:false});
+        if(r.length>bestN){ bestN=r.length; best=n; }
+      });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[best], {defval:'', raw:false});
+      if(!rows.length){ toast('El archivo no tiene filas','err'); return; }
+      asstMaterialHeaders = Object.keys(rows[0]);
+      asstMaterialRows = rows;
+      renderAsstMaterialMasivo();
+    } catch(e){ toast('No se pudo leer el archivo: '+e.message,'err'); }
+  };
+  reader.readAsBinaryString(file);
+}
+
+function ejecutarActualizacionMaterial(){
+  const getSel = function(id){ return document.getElementById(id)?.value||''; };
+  const cOid=getSel('asst-map-oid'), cDir=getSel('asst-map-dir'), cEmail=getSel('asst-map-email'),
+        cMed=getSel('asst-map-medidor'), cNom=getSel('asst-map-nombre'),
+        cMat=getSel('asst-map-material'), cNota=getSel('asst-map-nota');
+
+  if(!cMat && !cNota){ toast('Selecciona al menos una columna de material o nota a aplicar','err'); return; }
+
+  const candidatos = [];
+  Object.entries(osIdx).forEach(function(entry){
+    const fecha=entry[0];
+    entry[1].forEach(function(ev){
+      const st = calcStatus(ev);
+      if(st==='pending'||st==='reprog'||st==='cancel') candidatos.push({ev:ev, fecha:fecha});
+    });
+  });
+
+  let actualizadas=0, sinMatch=0;
+  const detalles=[];
+
+  asstMaterialRows.forEach(function(row){
+    const vOid = cOid? nrm(row[cOid]) : '';
+    const vDir = cDir? nrm(row[cDir]) : '';
+    const vEmail = cEmail? nrm(row[cEmail]) : '';
+    const vMed = cMed? nrm(row[cMed]) : '';
+    const vNom = cNom? nrm(row[cNom]) : '';
+
+    let match = null;
+    if(vOid) match = candidatos.find(function(c){ return nrm(c.ev.oid)===vOid; });
+    if(!match && vMed) match = candidatos.find(function(c){
+      return (c.ev.medidor && nrm(c.ev.medidor)===vMed) ||
+             nrm(c.ev.des||'').includes(vMed) || nrm(c.ev.obs||'').includes(vMed);
+    });
+    if(!match && vDir && vDir.length>4) match = candidatos.find(function(c){ return nrm(c.ev.dir||'').includes(vDir); });
+    if(!match && vEmail) match = candidatos.find(function(c){ return nrm(c.ev.em||'').includes(vEmail); });
+    if(!match && vNom) match = candidatos.find(function(c){ return nrm(c.ev.op||'').includes(vNom)||nrm(c.ev.tec||'').includes(vNom); });
+
+    if(match){
+      if(cMat && row[cMat]) match.ev.mat = String(row[cMat]);
+      if(cNota && row[cNota]) match.ev.nt_m = String(row[cNota]);
+      actualizadas++;
+      detalles.push(match);
+    } else {
+      sinMatch++;
+    }
+  });
+
+  if(actualizadas>0){
+    saveToLocalStorage();
+    applyFilters();
+    if(selDate) renderPaneContent();
+    pushFullDatasetToGAS();
+  }
+
+  const resultEl = document.getElementById('asst-material-result');
+  let html = '<div class="asst-answer">✅ '+actualizadas+' OS actualizadas · '+sinMatch+' filas sin coincidencia</div>';
+  detalles.slice(0,30).forEach(function(d){ html += findingRowHTML(d.ev, d.fecha); });
+  if(resultEl) resultEl.innerHTML = html;
+  toast(actualizadas+' OS actualizadas','ok');
+}
+
+// ── EXPORTAR: Excel con historial de notas + estado, por rango de fechas ──
+function renderAsstExportar(){
+  const body=document.getElementById('asst-body');
+  const hoy = dateKey(new Date());
+  body.innerHTML =
+    '<div class="asst-section-title">Rango de fechas a exportar</div>'+
+    '<div class="asst-match-row"><span>Desde</span><input type="date" id="asst-exp-desde" value="'+hoy+'"></div>'+
+    '<div class="asst-match-row"><span>Hasta</span><input type="date" id="asst-exp-hasta" value="'+hoy+'"></div>'+
+    '<div style="margin-top:12px">'+
+      '<button class="btn btn-primary btn-sm" onclick="exportarExcelAsistente()">📥 Generar Excel</button>'+
+    '</div>'+
+    '<div class="asst-section-title" style="margin-top:14px">Incluye</div>'+
+    '<div class="asst-empty" style="text-align:left">Una fila por OS con: ID orden, dirección, correo del aliado, fecha, estado, nota, observación de cancelación/reprogramación, medidor, material, ciudad, departamento y técnico — para el rango de fechas que elijas arriba.</div>';
+}
+
+function exportarExcelAsistente(){
+  const desde = document.getElementById('asst-exp-desde')?.value;
+  const hasta = document.getElementById('asst-exp-hasta')?.value;
+  if(!desde || !hasta){ toast('Elige un rango de fechas','err'); return; }
+  if(desde > hasta){ toast('La fecha "Desde" no puede ser mayor que "Hasta"','err'); return; }
+
+  const filas = [];
+  Object.entries(osIdx).forEach(function(entry){
+    const fecha = entry[0];
+    if(fecha < desde || fecha > hasta) return;
+    entry[1].forEach(function(ev){
+      const sc = ST[calcStatus(ev)]||ST.pending;
+      filas.push({
+        'ID ORDEN': ev.oid||'',
+        'DIRECCIÓN': ev.dir||'',
+        'CORREO ALIADO': ev.em||'',
+        'FECHA': fecha,
+        'ESTADO': sc.label,
+        'NOTA': ev.nt_m||'',
+        'OBSERVACIÓN CANCELACIÓN/REPROGRAMACIÓN': [ev.cr,ev.co].filter(Boolean).join(' — '),
+        'MEDIDOR': ev.medidor||'',
+        'MATERIAL': (MAT[ev.mat||'']||MAT['']).label||'',
+        'CIUDAD': ev.ci||'',
+        'DEPARTAMENTO': ev.sta||'',
+        'TÉCNICO': ev.op||ev.tec||''
+      });
+    });
+  });
+
+  if(!filas.length){ toast('No hay OS en ese rango de fechas','err'); return; }
+
+  filas.sort(function(a,b){ return a.FECHA.localeCompare(b.FECHA); });
+
+  const ws = XLSX.utils.json_to_sheet(filas);
+  ws['!cols'] = [
+    {wch:38},{wch:40},{wch:28},{wch:12},{wch:14},{wch:40},{wch:40},{wch:16},{wch:16},{wch:16},{wch:16},{wch:26}
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Historial OS');
+  XLSX.writeFile(wb, 'Historial_OS_'+desde+'_a_'+hasta+'.xlsx');
+  toast(filas.length+' OS exportadas a Excel','ok');
+}
+
+// ── CONFIG: correo para el archivado automático (retención 45 días) ──
+function renderAsstConfig(){
+  const body=document.getElementById('asst-body');
+  body.innerHTML =
+    '<div class="asst-section-title">Archivado automático</div>'+
+    '<div class="asst-empty" style="text-align:left;margin-bottom:10px">'+
+      'Cada 15 días, el sistema revisa las OS con más de 45 días de '+
+      'antigüedad, las exporta a un Excel comprimido, te lo envía por '+
+      'correo con un recordatorio, y luego las borra del calendario '+
+      'compartido (para mantenerlo liviano). Configura aquí el correo '+
+      'de destino — solo hace falta hacerlo una vez.'+
+    '</div>'+
+    '<div class="asst-match-row"><span>Correo</span>'+
+      '<input type="email" id="asst-cfg-email" placeholder="tucorreo@enerbit.co" style="flex:1"></div>'+
+    '<div style="margin-top:10px">'+
+      '<button class="btn btn-primary btn-sm" onclick="guardarCorreoArchivado()">Guardar correo</button>'+
+    '</div>'+
+    '<div id="asst-cfg-result"></div>'+
+    '<div class="asst-section-title" style="margin-top:18px">🗑️ Borrar por rango</div>'+
+    '<div class="asst-empty" style="text-align:left;margin-bottom:10px">'+
+      'Borra las OS de un día, semana o mes específico del calendario '+
+      'compartido. Pide confirmación antes de borrar — no hay deshacer.'+
+    '</div>'+
+    '<div class="asst-match-row"><span>Día</span>'+
+      '<input type="date" id="asst-del-dia" style="flex:1">'+
+      '<button class="btn btn-sm" onclick="borrarRangoAsst(\'dia\')">Borrar día</button></div>'+
+    '<div class="asst-match-row"><span>Semana</span>'+
+      '<input type="date" id="asst-del-semana" style="flex:1" title="Cualquier día de la semana a borrar">'+
+      '<button class="btn btn-sm" onclick="borrarRangoAsst(\'semana\')">Borrar semana</button></div>'+
+    '<div class="asst-match-row"><span>Mes</span>'+
+      '<input type="month" id="asst-del-mes" style="flex:1">'+
+      '<button class="btn btn-sm" onclick="borrarRangoAsst(\'mes\')">Borrar mes</button></div>'+
+    '<div id="asst-del-result"></div>'+
+    '<div class="asst-section-title" style="margin-top:18px">⭐ Vistas favoritas</div>'+
+    '<div class="asst-empty" style="text-align:left;margin-bottom:10px">'+
+      'Guarda la combinación de filtros que tengas activa ahora mismo '+
+      '(depto, ciudad, tipo, aliado, estado, material, técnico) con un '+
+      'nombre, para aplicarla luego con un clic.'+
+    '</div>'+
+    '<div class="asst-match-row"><span>Nombre</span>'+
+      '<input type="text" id="asst-vista-nombre" placeholder="Ej: Bogotá pendientes" style="flex:1">'+
+      '<button class="btn btn-sm" onclick="guardarVistaActual()">Guardar vista actual</button></div>'+
+    '<div id="asst-vistas-list"></div>';
+  renderListaVistas();
+  // Precargar el correo ya configurado, si existe
+  gasGet({action:'getArchiveEmail'}).then(function(d){
+    if(d && d.ok && d.email){
+      const el=document.getElementById('asst-cfg-email');
+      if(el) el.value = d.email;
+    }
+  }).catch(function(){});
+}
+
+function calcularRangoBorrado(tipo){
+  if(tipo==='dia'){
+    const d = document.getElementById('asst-del-dia')?.value;
+    return d ? {desde:d, hasta:d} : null;
+  }
+  if(tipo==='semana'){
+    const d = document.getElementById('asst-del-semana')?.value;
+    if(!d) return null;
+    const p=d.split('-').map(Number);
+    const dt=new Date(p[0],p[1]-1,p[2]);
+    const dow=dt.getDay();
+    const desdeD=new Date(dt); desdeD.setDate(dt.getDate()-dow);
+    const hastaD=new Date(desdeD); hastaD.setDate(desdeD.getDate()+6);
+    return {desde:dateKey(desdeD), hasta:dateKey(hastaD)};
+  }
+  if(tipo==='mes'){
+    const v = document.getElementById('asst-del-mes')?.value; // "2026-07"
+    if(!v) return null;
+    const p=v.split('-').map(Number);
+    const desdeD=new Date(p[0],p[1]-1,1);
+    const hastaD=new Date(p[0],p[1],0);
+    return {desde:dateKey(desdeD), hasta:dateKey(hastaD)};
+  }
+  return null;
+}
+
+async function borrarRangoAsst(tipo){
+  const rango = calcularRangoBorrado(tipo);
+  if(!rango){ toast('Selecciona una fecha','err'); return; }
+
+  let total=0;
+  Object.keys(osIdx).forEach(function(fecha){
+    if(fecha>=rango.desde && fecha<=rango.hasta) total += osIdx[fecha].length;
+  });
+  if(!total){ toast('No hay OS en ese rango','err'); return; }
+
+  const etiqueta = rango.desde===rango.hasta ? rango.desde : (rango.desde+' a '+rango.hasta);
+  if(!confirm('¿Borrar '+total+' OS entre '+etiqueta+'? Esta acción no se puede deshacer y afecta a todos los colaboradores del calendario compartido.')) return;
+
+  Object.keys(osIdx).forEach(function(fecha){
+    if(fecha>=rango.desde && fecha<=rango.hasta) delete osIdx[fecha];
+  });
+  applyFilters();
+  if(selDate) renderPaneContent();
+  saveToLocalStorage();
+
+  const resEl = document.getElementById('asst-del-result');
+  if(resEl) resEl.innerHTML = '<div class="asst-answer">Borrando y sincronizando…</div>';
+  const ok = await pushFullDatasetToGAS();
+  if(resEl) resEl.innerHTML = '<div class="asst-answer">'+(ok?'✅ ':'⚠️ ')+total+' OS borradas ('+etiqueta+')'+(ok?' y sincronizadas con todos.':' — guardadas localmente, GAS offline.')+'</div>';
+  toast(total+' OS borradas','ok');
+}
+
+// ── VISTAS FAVORITAS (combinaciones de filtros guardadas) ──
+function getVistas(){
+  try { return JSON.parse(localStorage.getItem('cal_vistas')||'{}'); } catch(e){ return {}; }
+}
+function setVistas(v){
+  try { localStorage.setItem('cal_vistas', JSON.stringify(v)); } catch(e){}
+}
+function guardarVistaActual(){
+  const nombre = document.getElementById('asst-vista-nombre')?.value.trim();
+  if(!nombre){ toast('Escribe un nombre para la vista','err'); return; }
+  const vista = {
+    dep: [...msData.dep.sel], cit: [...msData.cit.sel], typ: [...msData.typ.sel],
+    al: document.getElementById('f-al')?.value||'',
+    sta: document.getElementById('f-sta')?.value||'',
+    mat: document.getElementById('f-mat')?.value||'',
+    tec: document.getElementById('f-tec')?.value||''
+  };
+  const vistas = getVistas();
+  vistas[nombre] = vista;
+  setVistas(vistas);
+  toast('Vista "'+nombre+'" guardada ✓','ok');
+  renderListaVistas();
+}
+function sincronizarCheckboxesMS(key){
+  document.querySelectorAll('#'+key+'-list .ms-item').forEach(function(item){
+    var cb = item.querySelector('input');
+    if(cb) cb.checked = msData[key].sel.has(item.dataset.val);
+  });
+  updateMSBtn(key);
+}
+function aplicarVista(nombre){
+  const vistas = getVistas();
+  const v = vistas[nombre];
+  if(!v) return;
+  msData.dep.sel = new Set(v.dep||[]);
+  msData.cit.sel = new Set(v.cit||[]);
+  msData.typ.sel = new Set(v.typ||[]);
+  sincronizarCheckboxesMS('dep');
+  sincronizarCheckboxesMS('cit');
+  sincronizarCheckboxesMS('typ');
+  var elAl=document.getElementById('f-al'); if(elAl) elAl.value=v.al||'';
+  var elSta=document.getElementById('f-sta'); if(elSta) elSta.value=v.sta||'';
+  var elMat=document.getElementById('f-mat'); if(elMat) elMat.value=v.mat||'';
+  var elTec=document.getElementById('f-tec'); if(elTec) elTec.value=v.tec||'';
+  applyFilters();
+  toggleAsistente();
+  toast('Vista "'+nombre+'" aplicada','ok');
+}
+function borrarVista(nombre){
+  if(!confirm('¿Borrar la vista "'+nombre+'"?')) return;
+  const vistas = getVistas();
+  delete vistas[nombre];
+  setVistas(vistas);
+  renderListaVistas();
+}
+function renderListaVistas(){
+  const cont = document.getElementById('asst-vistas-list');
+  if(!cont) return;
+  const vistas = getVistas();
+  const nombres = Object.keys(vistas);
+  if(!nombres.length){ cont.innerHTML = '<div class="asst-empty">No tienes vistas guardadas todavía</div>'; return; }
+  cont.innerHTML = nombres.map(function(n){
+    return '<div class="asst-match-row"><span>⭐ '+n+'</span>'+
+      '<button class="btn btn-sm" onclick="aplicarVista(\''+n.replace(/'/g,"\\'")+'\')">Aplicar</button>'+
+      '<button class="btn btn-sm btn-ghost" onclick="borrarVista(\''+n.replace(/'/g,"\\'")+'\')">✕</button></div>';
+  }).join('');
+}
+
+async function guardarCorreoArchivado(){
+  const email = document.getElementById('asst-cfg-email')?.value||'';
+  if(!email || !email.includes('@')){ toast('Escribe un correo válido','err'); return; }
+  const d = await gasPost({action:'setArchiveEmail', email:email});
+  const resEl = document.getElementById('asst-cfg-result');
+  if(d && d.ok){
+    if(resEl) resEl.innerHTML = '<div class="asst-answer">✅ Correo guardado. El archivado automático usará este correo.</div>';
+    toast('Correo guardado ✓','ok');
+  } else {
+    if(resEl) resEl.innerHTML = '<div class="asst-answer">⚠️ No se pudo guardar (GAS offline). Intenta de nuevo cuando haya conexión.</div>';
+    toast('No se pudo guardar','err');
+  }
+}
+
+</script>
 </body>
 </html>
