@@ -4121,8 +4121,8 @@ function renderAsstMaterialMasivo(){
   if(!asstMaterialRows){
     inner.innerHTML =
       '<div class="asst-upload" onclick="document.getElementById(\'asst-file-input\').click()">'+
-        '📎 Sube el Excel/CSV de medidores o material<br>'+
-        '<small>Se busca por ID de orden, medidor, dirección, correo, nombre o fecha</small>'+
+        '📎 Sube cualquier Excel/CSV: de materiales, de estado de OS, o ambos<br>'+
+        '<small>Se busca por ID de orden + dirección + correo (o cualquier combinación), medidor, nombre o fecha</small>'+
       '</div>'+
       '<input type="file" id="asst-file-input" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleAsstFile(this.files[0])">';
     return;
@@ -4152,7 +4152,13 @@ function renderAsstMaterialMasivo(){
   html += '<div class="asst-section-title">Qué aplicar a las OS que coincidan</div>';
   html += selectHTML('asst-map-material','Columna con estado de material', guess(['material','estado material']));
   html += selectHTML('asst-map-nota','Columna con nota', guess(['nota','observacion']));
-  html += '<div style="margin-top:12px;display:flex;gap:8px">'+
+  html += selectHTML('asst-map-estado','Columna con estado de la OS', guess(['estado de la orden','estado os','status','estado']));
+  html += '<div class="asst-empty" style="text-align:left;margin-top:2px">'+
+    'Solo se tocan los campos que mapees aquí (material, nota, estado) — el resto de la '+
+    'tarjeta (materiales previos, historial, dirección, técnico, etc.) queda intacto. '+
+    'Si mapeas "Estado", acepta textos como pendiente/ejecutada/cancelada/reprogramada; '+
+    'valores que no reconozca se ignoran, no se borra el estado que ya había.</div>'+
+  '<div style="margin-top:12px;display:flex;gap:8px">'+
     '<button class="btn btn-primary btn-sm" onclick="ejecutarActualizacionMaterial()">Buscar y actualizar</button>'+
     '<button class="btn btn-ghost btn-sm" onclick="asstMaterialRows=null;renderAsstMaterialMasivo()">Cambiar archivo</button>'+
   '</div><div id="asst-material-result"></div>';
@@ -4267,24 +4273,90 @@ function handleAsstFile(file){
   reader.readAsBinaryString(file);
 }
 
+// Normaliza el texto de una celda de "Estado" a los códigos internos que
+// ya usa la tarjeta (done/reprog/cancel/pending). Si no reconoce el texto,
+// devuelve '' para que ejecutarActualizacionMaterial NO toque el estado
+// existente en vez de arriesgarse a borrarlo con un valor inventado.
+function _normalizarEstadoOSAsst(v) {
+  var s = nrm(v);
+  if (!s) return '';
+  if (s.includes('ejecutad') || s.includes('complet') || s.includes('finaliz') || s.includes('hecha') || s.includes('done')) return 'done';
+  if (s.includes('reprogram')) return 'reprog';
+  if (s.includes('cancel')) return 'cancel';
+  if (s.includes('pendient') || s.includes('programad')) return 'pending';
+  return '';
+}
+
+// Busca la tarjeta que corresponde a una fila del archivo, priorizando la
+// clave compuesta (orden + dirección + correo) que es la que realmente
+// hace única a cada tarjeta cuando una misma orden tiene varios puntos de
+// servicio (varios apartamentos/medidores). Solo cae a un match "débil"
+// (por dirección o correo solos) cuando no hay forma de desambiguar mejor.
+function _buscarCandidatoAsst(vOid, vDir, vEmail, vMed, vNom, candidatos) {
+  if (vOid) {
+    var porOid = candidatos.filter(function(c){ return nrm(c.ev.oid)===vOid; });
+    if (porOid.length === 1) return porOid[0];
+    if (porOid.length > 1) {
+      if (vDir) {
+        var porDir = porOid.filter(function(c){ return nrm(c.ev.dir||'').includes(vDir); });
+        if (porDir.length === 1) return porDir[0];
+        if (porDir.length > 1 && vEmail) {
+          var porDirEmail = porDir.filter(function(c){ return nrm(c.ev.em||'').includes(vEmail); });
+          if (porDirEmail.length) return porDirEmail[0];
+        }
+        if (porDir.length) return porDir[0];
+      }
+      if (vEmail) {
+        var porEmail = porOid.filter(function(c){ return nrm(c.ev.em||'').includes(vEmail); });
+        if (porEmail.length) return porEmail[0];
+      }
+      return porOid[0]; // ambiguo: mismo comportamiento que antes (toma el primero)
+    }
+  }
+  if (vMed) {
+    var m = candidatos.find(function(c){
+      return (c.ev.medidor && nrm(c.ev.medidor)===vMed) ||
+             nrm(c.ev.des||'').includes(vMed) || nrm(c.ev.obs||'').includes(vMed);
+    });
+    if (m) return m;
+  }
+  if (vDir && vEmail && vDir.length>4) {
+    var m2 = candidatos.find(function(c){ return nrm(c.ev.dir||'').includes(vDir) && nrm(c.ev.em||'').includes(vEmail); });
+    if (m2) return m2;
+  }
+  if (vDir && vDir.length>4) {
+    var m3 = candidatos.find(function(c){ return nrm(c.ev.dir||'').includes(vDir); });
+    if (m3) return m3;
+  }
+  if (vEmail) {
+    var m4 = candidatos.find(function(c){ return nrm(c.ev.em||'').includes(vEmail); });
+    if (m4) return m4;
+  }
+  if (vNom) {
+    var m5 = candidatos.find(function(c){ return nrm(c.ev.op||'').includes(vNom)||nrm(c.ev.tec||'').includes(vNom); });
+    if (m5) return m5;
+  }
+  return null;
+}
+
 function ejecutarActualizacionMaterial(){
   const getSel = function(id){ return document.getElementById(id)?.value||''; };
   const cOid=getSel('asst-map-oid'), cDir=getSel('asst-map-dir'), cEmail=getSel('asst-map-email'),
         cMed=getSel('asst-map-medidor'), cNom=getSel('asst-map-nombre'),
-        cMat=getSel('asst-map-material'), cNota=getSel('asst-map-nota');
+        cMat=getSel('asst-map-material'), cNota=getSel('asst-map-nota'), cEstado=getSel('asst-map-estado');
 
-  if(!cMat && !cNota){ toast('Selecciona al menos una columna de material o nota a aplicar','err'); return; }
+  if(!cMat && !cNota && !cEstado){ toast('Selecciona al menos una columna de material, nota o estado a aplicar','err'); return; }
 
+  // Todas las tarjetas son candidatas (no solo pendientes) — un archivo de
+  // estado de OS puede necesitar marcar como cancelada/reprogramada una
+  // que hoy figura como ejecutada, o viceversa.
   const candidatos = [];
   Object.entries(osIdx).forEach(function(entry){
     const fecha=entry[0];
-    entry[1].forEach(function(ev){
-      const st = calcStatus(ev);
-      if(st==='pending'||st==='reprog'||st==='cancel') candidatos.push({ev:ev, fecha:fecha});
-    });
+    entry[1].forEach(function(ev){ candidatos.push({ev:ev, fecha:fecha}); });
   });
 
-  let actualizadas=0, sinMatch=0;
+  let actualizadas=0, sinMatch=0, estadosCambiados=0, estadosIgnorados=0;
   const detalles=[];
 
   asstMaterialRows.forEach(function(row){
@@ -4294,21 +4366,19 @@ function ejecutarActualizacionMaterial(){
     const vMed = cMed? nrm(row[cMed]) : '';
     const vNom = cNom? nrm(row[cNom]) : '';
 
-    let match = null;
-    if(vOid) match = candidatos.find(function(c){ return nrm(c.ev.oid)===vOid; });
-    if(!match && vMed) match = candidatos.find(function(c){
-      return (c.ev.medidor && nrm(c.ev.medidor)===vMed) ||
-             nrm(c.ev.des||'').includes(vMed) || nrm(c.ev.obs||'').includes(vMed);
-    });
-    if(!match && vDir && vDir.length>4) match = candidatos.find(function(c){ return nrm(c.ev.dir||'').includes(vDir); });
-    if(!match && vEmail) match = candidatos.find(function(c){ return nrm(c.ev.em||'').includes(vEmail); });
-    if(!match && vNom) match = candidatos.find(function(c){ return nrm(c.ev.op||'').includes(vNom)||nrm(c.ev.tec||'').includes(vNom); });
+    const match = _buscarCandidatoAsst(vOid, vDir, vEmail, vMed, vNom, candidatos);
 
     if(match){
-      if(cMat && row[cMat]) match.ev.mat = String(row[cMat]);
-      if(cNota && row[cNota]) match.ev.nt_m = String(row[cNota]);
-      actualizadas++;
-      detalles.push(match);
+      let algoCambio = false;
+      if(cMat && row[cMat]){ match.ev.mat = String(row[cMat]); algoCambio = true; }
+      if(cNota && row[cNota]){ match.ev.nt_m = String(row[cNota]); algoCambio = true; }
+      if(cEstado && row[cEstado]){
+        const nuevoEstado = _normalizarEstadoOSAsst(row[cEstado]);
+        if(nuevoEstado){ match.ev.em_m = nuevoEstado; algoCambio = true; estadosCambiados++; }
+        else estadosIgnorados++;
+      }
+      if(algoCambio){ actualizadas++; detalles.push(match); }
+      else sinMatch++;
     } else {
       sinMatch++;
     }
@@ -4322,7 +4392,11 @@ function ejecutarActualizacionMaterial(){
   }
 
   const resultEl = document.getElementById('asst-material-result');
-  let html = '<div class="asst-answer">✅ '+actualizadas+' OS actualizadas · '+sinMatch+' filas sin coincidencia</div>';
+  let html = '<div class="asst-answer">✅ '+actualizadas+' OS actualizadas'+
+    (estadosCambiados?' ('+estadosCambiados+' con cambio de estado)':'')+
+    ' · '+sinMatch+' fila(s) sin coincidencia o sin cambios'+
+    (estadosIgnorados?' · '+estadosIgnorados+' estado(s) no reconocidos (se dejaron igual)':'')+
+    '</div>';
   detalles.slice(0,30).forEach(function(d){ html += findingRowHTML(d.ev, d.fecha); });
   if(resultEl) resultEl.innerHTML = html;
   toast(actualizadas+' OS actualizadas','ok');
