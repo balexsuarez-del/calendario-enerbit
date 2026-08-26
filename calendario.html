@@ -1585,6 +1585,17 @@ async function cargarEventosDesdeExcel(evt) {
         };
       }).filter(function(ev) { return ev.operador && ev.ciudad; });
 
+      // Recalcular el color/estado según la fecha REAL del evento (no según
+      // lo que diga literalmente el archivo) — un evento fechado ayer se ve
+      // gris aunque el reporte lo haya marcado "ACTIVO", uno de hoy marcado
+      // "pendiente" pasa a activo, y uno de antier o más viejo se descarta.
+      nuevos = reconciliarPorFechaJS(nuevos, hoyStr);
+
+      if (nuevos.length === 0) {
+        panelResultado.innerHTML = '<p style="color:var(--am)">Todos los eventos del archivo son de antier o más antiguos (según su fecha), así que ninguno se cargó al mapa.</p>';
+        return;
+      }
+
       nuevos.forEach(function(ev){ if(!ev.lat || !ev.lng) sinCoords.push(ev); });
 
       if (nuevos.length === 0) {
