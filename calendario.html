@@ -424,6 +424,51 @@ textarea.fi{resize:vertical;min-height:60px}
 }
 .mat-toolbar-title { font-size:.72rem;font-weight:700;color:#501C7C;flex:1; }
 
+
+/* ── TARJETA COMPACTA ── */
+.os-card-header { display:flex;align-items:center;gap:6px;flex-wrap:wrap;cursor:pointer;user-select:none; }
+.os-toggle { margin-left:auto;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.06);border:none;cursor:pointer;font-size:.7rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;opacity:.5;transition:all .15s; }
+.os-toggle:hover { background:rgba(0,0,0,.12);opacity:1; }
+.os-details { display:none; }
+.os-details.open { display:block; }
+.os-loc-compact { font-size:.7rem;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px; }
+
+/* ── PANEL AGENTE IA ── */
+.agent-fab { position:fixed;bottom:22px;right:22px;z-index:500;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#501C7C,#7028AE);border:none;color:#fff;font-size:1.4rem;cursor:pointer;box-shadow:0 4px 16px rgba(80,28,124,.4);display:flex;align-items:center;justify-content:center;transition:all .2s; }
+.agent-fab:hover { transform:scale(1.1); }
+.agent-panel { position:fixed;bottom:86px;right:16px;z-index:500;width:360px;max-height:560px;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.18);display:none;flex-direction:column;overflow:hidden; }
+.agent-panel.open { display:flex; }
+.agent-header { background:linear-gradient(135deg,#501C7C,#7028AE);padding:12px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0; }
+.agent-title { color:#fff;font-weight:700;font-size:.88rem;flex:1; }
+.agent-subtitle { color:rgba(255,255,255,.7);font-size:.65rem; }
+.agent-close { background:rgba(255,255,255,.15);border:none;color:#fff;width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:.8rem; }
+.agent-msgs { flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;background:#F9FAFB; }
+.msg { max-width:85%;padding:8px 12px;border-radius:12px;font-size:.78rem;line-height:1.5; }
+.msg.bot { background:#fff;border:1px solid #E5E7EB;color:#374151;align-self:flex-start;border-radius:4px 12px 12px 12px; }
+.msg.user { background:#501C7C;color:#fff;align-self:flex-end;border-radius:12px 4px 12px 12px; }
+.msg.loading { background:#fff;border:1px solid #E5E7EB;color:#9CA3AF;font-style:italic;align-self:flex-start; }
+.agent-input-wrap { padding:10px 12px;border-top:1px solid #E5E7EB;display:flex;gap:6px;flex-shrink:0;background:#fff; }
+.agent-input { flex:1;padding:7px 12px;border:1.5px solid #E5E7EB;border-radius:20px;font-size:.78rem;font-family:inherit;color:#374151;outline:none; }
+.agent-input:focus { border-color:#7028AE; }
+.agent-send { background:#501C7C;border:none;color:#fff;width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center; }
+.agent-chips { padding:6px 12px;display:flex;gap:5px;flex-wrap:wrap;border-top:1px solid #F3F4F6;background:#fff;flex-shrink:0; }
+.chip-q { background:#EDE9FE;color:#501C7C;border:none;padding:3px 10px;border-radius:12px;font-size:.68rem;font-weight:600;cursor:pointer;font-family:inherit; }
+.chip-q:hover { background:#DDD6FE; }
+.mat-toolbar { display:flex;gap:6px;padding:8px 12px;background:#F9FAFB;border-bottom:1px solid #E5E7EB;flex-shrink:0;flex-wrap:wrap;align-items:center; }
+.mat-toolbar-title { font-size:.72rem;font-weight:700;color:#501C7C;flex:1; }
+
+/* ── MATERIALES COMPACTOS ── */
+.mat-section { margin-top:6px;padding-top:6px;border-top:1px solid #EDE9FE; }
+.mat-title { font-size:.62rem;font-weight:700;color:#6D28D9;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px; }
+.mat-item { display:flex;align-items:center;gap:5px;font-size:.7rem;padding:3px 6px;border-radius:5px;background:#EDE9FE;border:1px solid #C4B5FD;margin-bottom:3px; }
+.mat-item-txt { flex:1;color:#4C1D95; }
+.mat-btns { display:flex;gap:2px; }
+.msb { border:none;border-radius:4px;padding:2px 5px;font-size:.6rem;font-weight:700;cursor:pointer;font-family:inherit;opacity:.6;transition:all .15s; }
+.msb:hover,.msb.active { opacity:1;transform:scale(1.05); }
+.msb.ok  { background:#D1FAE5;color:#065F46; }
+.msb.no  { background:#FEE2E2;color:#991B1B; }
+.msb.way { background:#FEF3C7;color:#92400E; }
+
 </style>
 </head>
 <body>
@@ -825,6 +870,45 @@ textarea.fi{resize:vertical;min-height:60px}
   <div class="agent-input-wrap">
     <input type="text" class="agent-input" id="agent-input" 
            placeholder="Pregunta sobre materiales..."
+           onkeydown="if(event.key==='Enter')sendAgent()">
+    <button class="agent-send" onclick="sendAgent()">➤</button>
+  </div>
+</div>
+
+
+<!-- AGENTE IA FAB -->
+<button class="agent-fab" onclick="toggleAgent()" title="Agente Materiales">🤖</button>
+
+<!-- PANEL AGENTE -->
+<div class="agent-panel" id="agent-panel">
+  <div class="agent-header">
+    <div style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:1rem;">🤖</div>
+    <div style="flex:1">
+      <div class="agent-title">Agente de Materiales</div>
+      <div class="agent-subtitle">enerBit · Calendario Operativo</div>
+    </div>
+    <button class="agent-close" onclick="toggleAgent()">✕</button>
+  </div>
+  <div class="mat-toolbar">
+    <span class="mat-toolbar-title">📦 Gestión de Materiales</span>
+    <button class="btn btn-secondary btn-sm" onclick="exportMatExcel()">⬇ Exportar</button>
+    <label class="btn btn-secondary btn-sm" style="cursor:pointer">
+      ⬆ Importar
+      <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="importMatExcel(this.files[0])">
+    </label>
+  </div>
+  <div class="agent-msgs" id="agent-msgs">
+    <div class="msg bot">👋 Hola! Puedo ayudarte con materiales de las OS.<br><br>Busca por email, ID de orden, aliado, fecha o tipo de OS.</div>
+  </div>
+  <div class="agent-chips">
+    <button class="chip-q" onclick="askAgent('Muéstrame las OS de hoy con materiales')">📅 OS de hoy</button>
+    <button class="chip-q" onclick="exportMatExcel()">⬇ Exportar</button>
+    <button class="chip-q" onclick="askAgent('¿Qué OS tienen materiales faltantes?')">⛔ Faltantes</button>
+    <button class="chip-q" onclick="askAgent('Busca las OS de tipo CCE')">🔍 Buscar CCE</button>
+  </div>
+  <div class="agent-input-wrap">
+    <input type="text" class="agent-input" id="agent-input"
+           placeholder="Email, ID orden, aliado, fecha..."
            onkeydown="if(event.key==='Enter')sendAgent()">
     <button class="agent-send" onclick="sendAgent()">➤</button>
   </div>
@@ -1401,9 +1485,9 @@ function renderMaterials(oid, mts) {
     html += '<div class="mat-item">';
     html += '<span class="mat-item-txt">' + mat + '</span>';
     html += '<div class="mat-status-btn">';
-    html += '<button class="msb ok'+(st==='ok'?' active':'')+'" onclick="setMatStatus(''+oid+'','+idx+','ok')">✅</button>';
-    html += '<button class="msb no'+(st==='no'?' active':'')+'" onclick="setMatStatus(''+oid+'','+idx+','no')">⛔</button>';
-    html += '<button class="msb way'+(st==='way'?' active':'')+'" onclick="setMatStatus(''+oid+'','+idx+','way')">🚚</button>';
+    html += '<button class="msb ok'+(st==='ok'?' active':'')+'" onclick="setMatStatus(\'' +oid+ '\','+idx+',\'ok\')">✅</button>';
+    html += '<button class="msb no'+(st==='no'?' active':'')+'" onclick="setMatStatus(\'' +oid+ '\','+idx+',\'no\')">⛔</button>';
+    html += '<button class="msb way'+(st==='way'?' active':'')+'" onclick="setMatStatus(\'' +oid+ '\','+idx+',\'way\')">🚚</button>';
     html += '</div>';
     html += '</div>';
   });
@@ -2306,50 +2390,48 @@ function osCardHTML(ev, key) {
   var ds=calcStatus(ev), sc=ST[ds]||ST.pending;
   var co=depColor(ev.sta), mat=MAT[ev.mat||'']||MAT[''];
   var isR=ds==='reprog', isC=ds==='cancel';
-  var emp=getEmpresa(ev); var ei=empresaInfo(emp);
-  var chg=isChanged(ev.oid,ev.aid);
-  var readBy=getReadBy(ev.oid,ev.aid);
+  var emp=getEmpresa(ev), ei=empresaInfo(emp);
+  var chg=isChanged(ev.oid,ev.aid), readBy=getReadBy(ev.oid,ev.aid);
   var mts=ev.mts||[];
-  var cardId='card-'+ev.oid+'-'+ev.aid.slice(-8);
-  var cardBorder=chg?'border:2px solid #F59E0B!important;background:#FFFBEB!important':
-                 emp==='kt'?'border-left:5px solid #2563EB!important;background:#EFF6FF!important':
-                 'border-left:5px solid #7028AE!important';
+  var cardId='c-'+ev.oid.slice(-8)+'-'+ev.aid.slice(-8);
+  var border=chg?'border:2px solid #F59E0B!important;background:#FFFBEB!important':
+             emp==='kt'?'border-left:5px solid #2563EB!important;background:#EFF6FF!important':
+             'border-left:5px solid #7028AE!important';
   var mot='';
   if((isR||isC)&&(ev.cr||ev.co))
-    mot='<div class="motivo '+(isR?'rpg':'cnl')+'"><strong>'+(ev.cr||'')+'</strong>'+(ev.co&&ev.co!==ev.cr?'<br><small>'+ev.co.substring(0,150)+'</small>':'')+'</div>';
+    mot='<div class="motivo '+(isR?'rpg':'cnl')+'"><strong>'+(ev.cr||'')+'</strong>'+(ev.co&&ev.co!==ev.cr?'<br><small>'+ev.co.substring(0,120)+'</small>':'')+'</div>';
 
-  // Empresa header (solo si es KantiA o Manual)
-  var empHeader='';
-  if(emp==='kt') empHeader='<div class="kt-header"><svg width="11" height="11" viewBox="0 0 22 22"><rect width="22" height="22" rx="3" fill="white"/><path d="M4 3L4 19M4 11L16 3M4 11L16 19" stroke="#2563EB" stroke-width="2.5" stroke-linecap="round"/></svg><span class="kt-header-txt">kantiA</span></div>';
-  else if(emp==='usr') empHeader='<div style="background:#F59E0B;padding:2px 10px;margin:-8px -11px 6px -16px;"><span style="font-size:.58rem;font-weight:700;color:#fff">✏ OS Manual</span></div>';
+  var empH='';
+  if(emp==='kt') empH='<div class="kt-header"><span class="kt-header-txt">kantiA</span></div>';
+  else if(emp==='usr') empH='<div style="background:#F59E0B;padding:2px 10px;margin:-8px -11px 6px -16px"><span style="font-size:.58rem;font-weight:700;color:#fff">✏ OS Manual</span></div>';
 
-  // Badge cambio
   var chgBadge=chg?'<span class="changed-badge">🔔 '+(changedOS[ev.oid+'|'+ev.aid]||{}).campo+'</span>':'';
 
-  // Materiales compactos
+  // Resumen materiales compacto
   var matHtml='';
-  if(mts.length>0) {
+  if(mts.length) {
     var allOk=mts.every(function(_,i){return getMatStatus(ev.oid,i)==='ok';});
     var hasNo=mts.some(function(_,i){return getMatStatus(ev.oid,i)==='no';});
-    var matSummary=allOk?'<span style="color:#065F46;font-weight:700">✅ Completo</span>':
-                   hasNo?'<span style="color:#991B1B;font-weight:700">⛔ Faltante</span>':
-                   '<span style="color:#92400E">❓ '+mts.length+' mat.</span>';
-    matHtml='<div class="mat-section"><div class="mat-title">🔧 Materiales '+matSummary+'</div>'+
-      '<div id="mat-'+cardId+'" style="display:none">'+
-      mts.map(function(mat2,idx){
-        var st=getMatStatus(ev.oid,idx);
-        return '<div class="mat-item"><span class="mat-item-txt">'+mat2+'</span>'+
-          '<div class="mat-btns">'+
-          '<button class="msb ok'+(st==='ok'?' active':'')+'" onclick="setMatStatus(\''+ev.oid+'\','+idx+',\'ok\')">✅</button>'+
-          '<button class="msb no'+(st==='no'?' active':'')+'" onclick="setMatStatus(\''+ev.oid+'\','+idx+',\'no\')">⛔</button>'+
-          '<button class="msb way'+(st==='way'?' active':'')+'" onclick="setMatStatus(\''+ev.oid+'\','+idx+',\'way\')">🚚</button>'+
-          '</div></div>';
-      }).join('')+'</div>'+
-      '<button onclick="var d=document.getElementById(\'mat-'+cardId+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="font-size:.62rem;color:#501C7C;background:none;border:none;cursor:pointer;padding:2px 0">ver materiales ▸</button>'+
-    '</div>';
+    var summary=allOk?'<span style="color:#065F46;font-weight:700">✅ Completo</span>':
+                hasNo?'<span style="color:#991B1B;font-weight:700">⛔ Faltante</span>':
+                '<span style="color:#92400E">❓ '+mts.length+' mat.</span>';
+    matHtml='<div class="mat-section">'
+      +'<div class="mat-title">🔧 Materiales '+summary+'</div>'
+      +'<div id="ml-'+cardId+'" style="display:none">'
+      +mts.map(function(m2,idx){
+        var s=getMatStatus(ev.oid,idx);
+        return '<div class="mat-item"><span class="mat-item-txt">'+m2+'</span>'
+          +'<div class="mat-btns">'
+          +'<button class="msb ok'+(s==='ok'?' active':'')+'" onclick="setMatStatus(\''+ev.oid+'\','+idx+',\'ok\')">✅</button>'
+          +'<button class="msb no'+(s==='no'?' active':'')+'" onclick="setMatStatus(\''+ev.oid+'\','+idx+',\'no\')">⛔</button>'
+          +'<button class="msb way'+(s==='way'?' active':'')+'" onclick="setMatStatus(\''+ev.oid+'\','+idx+',\'way\')">🚚</button>'
+          +'</div></div>';
+      }).join('')
+      +'</div>'
+      +'<button onclick="var d=document.getElementById(\'ml-'+cardId+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="font-size:.62rem;color:#501C7C;background:none;border:none;cursor:pointer;padding:2px 0">ver materiales ▸</button>'
+      +'</div>';
   }
 
-  // Selectores edit
   var estOpts=[''].concat(Object.keys(ST)).map(function(v){
     var s=v?ST[v]:null;
     return '<option value="'+v+'"'+(ev.em_m===v?' selected':'')+'>'+(s?s.icon+' '+s.label:'Sin override')+'</option>';
@@ -2358,63 +2440,56 @@ function osCardHTML(ev, key) {
     return '<option value="'+e[0]+'"'+((ev.mat||'')===e[0]?' selected':'')+'>'+e[1].label+'</option>';
   }).join('');
   var depTag='<span class="tag" style="background:'+co.bg+';color:'+co.text+';border:1px solid '+co.bar+'40">◼ '+ev.sta+'</span>';
-
-  // Botones leído
-  var readBtns=chg?('<div class="read-btn-wrap"><span style="font-size:.62rem;color:#92400E;font-weight:700">🔔 Leído por:</span>'+
-    ['eB','kT','Aliado'].map(function(r){
+  var readBtns=chg?('<div class="read-btn-wrap"><span style="font-size:.62rem;color:#92400E;font-weight:700">🔔 Leído por:</span>'
+    +['eB','kT','Aliado'].map(function(r){
       var done=readBy.includes(r);
-      var cls='read-btn '+(r==='eB'?'read-eb':r==='kT'?'read-kt':'read-al')+(done?' read-done':'');
-      return '<button class="'+cls+'" onclick="markRead(\''+ev.oid+'\',\''+ev.aid+'\',\''+r+'\')">'+(done?'✓ ':'')+r+'</button>';
+      return '<button class="read-btn read-'+(r==='eB'?'eb':r==='kT'?'kt':'al')+(done?' read-done':'')+'" onclick="markRead(\''+ev.oid+'\',\''+ev.aid+'\',\''+r+'\')">'+(done?'✓ ':'')+r+'</button>';
     }).join('')+'</div>'):'';
 
-  return '<div class="os-card" style="'+cardBorder+';border-radius:8px;overflow:hidden;display:flex;margin-bottom:6px" draggable="true" ondragstart="dDragStart(event,\''+ev.oid+'\',\''+ev.aid+'\',\''+key+'\')">'+
-    '<div style="width:4px;flex-shrink:0;background:'+(chg?'#F59E0B':emp==='kt'?'#2563EB':'#7028AE')+(chg?';animation:stripeFlash 1.2s infinite':'')+'"></div>'+
-    '<div class="os-body" style="flex:1;min-width:0;padding:8px 11px">'+
-      empHeader+
-      // ── HEADER COMPACTO (siempre visible) ──
-      '<div class="os-card-header" onclick="toggleCard(\''+cardId+'\')" >'+
-        '<span class="os-type" style="font-size:.8rem">'+sc.icon+' '+ev.tc+'</span>'+
-        (ev.ti?'<span class="os-time" style="font-size:.65rem">⏰'+ev.ti+'</span>':'')+
-        '<span class="os-id" style="font-size:.58rem;font-family:monospace;user-select:all">'+ev.oid+'</span>'+
-        chgBadge+
-        '<button class="os-toggle" id="tog-'+cardId+'">▸</button>'+
-      '</div>'+
-      // Loc compacta siempre visible
-      '<div class="os-loc-compact">📍 '+ev.ci+(ev.sta?', '+ev.sta:'')+(ev.op?' · 👷 '+ev.op.split(' ')[0]:'')+
-        (mts.length&&!chg?' · 🔧'+mts.length:'')+'</div>'+
-      // ── DETALLES (colapsados) ──
-      '<div class="os-details" id="det-'+cardId+'">'+
-        '<div class="os-loc" style="font-size:.7rem;margin-top:4px">📍 '+ev.ci+(ev.sta?', '+ev.sta:'')+(ev.dir?' — '+ev.dir.substring(0,50):'')+
-          '<br>👷 '+(ev.op||'–')+(ev.cert?'<br>📄 Acta: '+ev.cert:'')+'</div>'+
-        (ev.obs?'<div class="obs-previa" style="margin-top:5px">🔍 <strong>Obs:</strong> '+ev.obs.substring(0,250)+'</div>':'')+
-        mot+
-        '<div class="os-tags" style="margin-top:5px">'+
-          '<span class="tag '+sc.tag+'">'+sc.icon+' '+sc.label+'</span>'+
-          depTag+
-          '<span class="tag '+ei.badge+'">'+ei.label+'</span>'+
-          (ev.mat?'<span class="tag" style="background:'+mat.bg+';color:'+mat.cl+'">'+mat.label+'</span>':'')+
-        '</div>'+
-        (ev.nt_m?'<div class="os-nota">📌 '+ev.nt_m+'</div>':'')+
-        matHtml+
-        readBtns+
-        '<div class="edit-section">'+
-          '<div class="edit-row"><label>Estado</label>'+
-            '<select class="edit-select" id="est-'+ev.oid+'-'+ev.aid+'">'+estOpts+'</select>'+
-            '<button class="save-btn" onclick="saveEstado(\''+ev.oid+'\',\''+ev.aid+'\')">💾</button></div>'+
-          '<div class="edit-row"><label>Material</label>'+
-            '<select class="edit-select" id="mat-'+ev.oid+'-'+ev.aid+'">'+matOpts+'</select>'+
-            '<button class="save-btn" onclick="saveMaterial(\''+ev.oid+'\',\''+ev.aid+'\')">💾</button></div>'+
-          '<div class="nota-wrap">'+
-            '<textarea id="nota-'+ev.oid+'-'+ev.aid+'" placeholder="Escribe una nota..." style="font-size:.74rem;min-height:40px">'+(ev.nt_m||'')+'</textarea>'+
-            '<div class="nota-actions">'+
-              '<button class="btn btn-secondary btn-sm" onclick="saveNota(\''+ev.oid+'\',\''+ev.aid+'\')">💾 Nota</button>'+
-              '<button class="btn btn-secondary btn-sm" onclick="openMvModal(\''+ev.oid+'\',\''+ev.aid+'\',\''+key+'\')">📅 Fecha</button>'+
-              '<button class="btn btn-danger btn-sm" onclick="deleteOS(\''+ev.oid+'\',\''+ev.aid+'\')">🗑</button>'+
-            '</div></div>'+
-        '</div>'+
-      '</div>'+// fin os-details
-    '</div>'+
-  '</div>';
+  return '<div class="os-card" style="'+border+';border-radius:8px;overflow:hidden;display:flex;margin-bottom:6px" draggable="true" ondragstart="dDragStart(event,\''+ev.oid+'\',\''+ev.aid+'\',\''+key+'\')">'
+    +'<div style="width:4px;flex-shrink:0;background:'+(chg?'#F59E0B':emp==='kt'?'#2563EB':'#7028AE')+(chg?';animation:stripeFlash 1.2s infinite':'')+'">'+'</div>'
+    +'<div class="os-body" style="flex:1;min-width:0;padding:8px 11px">'
+      +empH
+      +'<div class="os-card-header" onclick="toggleCard(\''+cardId+'\')">'
+        +'<span class="os-type" style="font-size:.8rem">'+sc.icon+' '+ev.tc+'</span>'
+        +(ev.ti?'<span class="os-time" style="font-size:.65rem">⏰'+ev.ti+'</span>':'')
+        +'<span class="os-id" style="font-size:.58rem">#'+ev.oid.slice(-8)+'</span>'
+        +chgBadge
+        +'<button class="os-toggle" id="tog-'+cardId+'">▸</button>'
+      +'</div>'
+      +'<div class="os-loc-compact">📍 '+ev.ci+(ev.sta?', '+ev.sta:'')+(ev.op?' · 👷 '+ev.op.split(' ')[0]:'')+(mts.length?' · 🔧'+mts.length:'')+'</div>'
+      +'<div class="os-details" id="det-'+cardId+'">'
+        +'<div class="os-loc" style="font-size:.7rem;margin-top:4px">📍 '+ev.ci+(ev.sta?', '+ev.sta:'')+(ev.dir?' — '+ev.dir.substring(0,50):'')
+          +'<br>👷 '+(ev.op||'–')+(ev.cert?'<br>📄 Acta: '+ev.cert:'')+'</div>'
+        +(ev.obs?'<div class="obs-previa" style="margin-top:5px">🔍 <strong>Obs:</strong> '+ev.obs.substring(0,250)+'</div>':'')
+        +mot
+        +'<div class="os-tags" style="margin-top:5px">'
+          +'<span class="tag '+sc.tag+'">'+sc.icon+' '+sc.label+'</span>'
+          +depTag
+          +'<span class="tag '+ei.badge+'">'+ei.label+'</span>'
+          +(ev.mat?'<span class="tag" style="background:'+mat.bg+';color:'+mat.cl+'">'+mat.label+'</span>':'')
+        +'</div>'
+        +(ev.nt_m?'<div class="os-nota">📌 '+ev.nt_m+'</div>':'')
+        +matHtml
+        +readBtns
+        +'<div class="edit-section">'
+          +'<div class="edit-row"><label>Estado</label>'
+            +'<select class="edit-select" id="est-'+ev.oid+'-'+ev.aid+'">'+estOpts+'</select>'
+            +'<button class="save-btn" onclick="saveEstado(\''+ev.oid+'\',\''+ev.aid+'\')">💾</button></div>'
+          +'<div class="edit-row"><label>Material</label>'
+            +'<select class="edit-select" id="mat-'+ev.oid+'-'+ev.aid+'">'+matOpts+'</select>'
+            +'<button class="save-btn" onclick="saveMaterial(\''+ev.oid+'\',\''+ev.aid+'\')">💾</button></div>'
+          +'<div class="nota-wrap">'
+            +'<textarea id="nota-'+ev.oid+'-'+ev.aid+'" placeholder="Escribe una nota..." style="font-size:.74rem;min-height:40px">'+(ev.nt_m||'')+'</textarea>'
+            +'<div class="nota-actions">'
+              +'<button class="btn btn-secondary btn-sm" onclick="saveNota(\''+ev.oid+'\',\''+ev.aid+'\')">💾 Nota</button>'
+              +'<button class="btn btn-secondary btn-sm" onclick="openMvModal(\''+ev.oid+'\',\''+ev.aid+'\',\''+key+'\')">📅 Fecha</button>'
+              +'<button class="btn btn-danger btn-sm" onclick="deleteOS(\''+ev.oid+'\',\''+ev.aid+'\')">🗑</button>'
+            +'</div></div>'
+        +'</div>'
+      +'</div>'
+    +'</div>'
+  +'</div>';
 }
 
 
@@ -2711,6 +2786,259 @@ function toast(msg,type=''){
   t.textContent=msg;t.className='toast show'+(type?' '+type:'');
   setTimeout(()=>{t.className='toast';},3500);
 }
+
+// ══ MATERIALES localStorage ══════════════════════════════════
+var matStatus = {};
+try { matStatus = JSON.parse(localStorage.getItem('mat_status')||'{}'); } catch(e){}
+
+function setMatStatus(oid, idx, st) {
+  matStatus[oid+':'+idx] = st;
+  try { localStorage.setItem('mat_status', JSON.stringify(matStatus)); } catch(e){}
+  if(selDate) renderOSList(selDate);
+}
+function getMatStatus(oid, idx) { return matStatus[oid+':'+idx]||''; }
+
+// ══ TARJETA COMPACTA ════════════════════════════════════════
+function toggleCard(id) {
+  var det = document.getElementById('det-'+id);
+  var btn = document.getElementById('tog-'+id);
+  if(!det) return;
+  var open = det.classList.toggle('open');
+  if(btn) btn.textContent = open ? '▾' : '▸';
+}
+
+// ══ AGENTE ══════════════════════════════════════════════════
+var agentOpen = false, agentHistory = [];
+
+function toggleAgent() {
+  agentOpen = !agentOpen;
+  var p = document.getElementById('agent-panel');
+  if(p) p.classList.toggle('open', agentOpen);
+}
+
+function askAgent(q) {
+  var inp = document.getElementById('agent-input');
+  if(inp) { inp.value = q; sendAgent(); }
+}
+
+function addMsg(text, role) {
+  var msgs = document.getElementById('agent-msgs');
+  if(!msgs) return null;
+  var d = document.createElement('div');
+  d.className = 'msg '+role;
+  d.innerHTML = String(text).replace(/\n/g,'<br>');
+  msgs.appendChild(d);
+  msgs.scrollTop = msgs.scrollHeight;
+  return d;
+}
+
+async function sendAgent() {
+  var inp = document.getElementById('agent-input');
+  if(!inp || !inp.value.trim()) return;
+  var q = inp.value.trim(); inp.value = '';
+  addMsg(q, 'user');
+  var lm = addMsg('⏳ Pensando...', 'loading');
+  agentHistory.push({role:'user', content: q});
+
+  var ctx = buildMatCtx();
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model:'claude-sonnet-4-6', max_tokens:1000,
+        system:`Eres el agente de materiales del Calendario Operativo enerBit.
+Responde SIEMPRE en JSON válido, sin texto fuera del JSON.
+
+ACCIONES:
+1. {"action":"show_os_materials","query_type":"email|order_id|aliado|fecha|tipo","query_value":"...","message":"texto"}
+2. {"action":"export_excel","query_type":"...","query_value":"...","message":"texto"}
+3. {"action":"text","message":"respuesta"}
+
+DETECTAR INTENCIÓN:
+- Email (@gmail etc) → query_type:"email"
+- UUID → query_type:"order_id"
+- Aliado (MHEV, C3, CGM) → query_type:"aliado"
+- Fecha/hoy/mañana → query_type:"fecha"
+- Tipo OS (CCE, IPCCE, ISBG, NT) → query_type:"tipo"
+- "exportar"/"Excel" → action:"export_excel"
+
+DATOS ACTUALES:
+${ctx}`,
+        messages: agentHistory.slice(-6)
+      })
+    });
+    var data = await resp.json();
+    var raw = (data.content&&data.content[0]) ? data.content[0].text : '{"action":"text","message":"Sin respuesta"}';
+    if(lm) lm.remove();
+    var parsed = {};
+    try { parsed = JSON.parse(raw); } catch(e) { parsed = {action:'text', message:raw}; }
+
+    if(parsed.action === 'show_os_materials') {
+      addMsg(parsed.message || '🔍 Buscando...', 'bot');
+      var res = searchOSLocal(parsed.query_type, parsed.query_value);
+      if(res.length) renderOSMaterialCards(res);
+      else addMsg('⚠️ No se encontraron OS para: "' + parsed.query_value + '"', 'bot');
+    } else if(parsed.action === 'export_excel') {
+      addMsg(parsed.message || '📊 Generando...', 'bot');
+      var res2 = parsed.query_value ? searchOSLocal(parsed.query_type, parsed.query_value) : Object.values(osIdx).flat();
+      exportMatExcelFromList(res2);
+    } else {
+      addMsg(parsed.message || raw, 'bot');
+    }
+    agentHistory.push({role:'assistant', content:raw});
+  } catch(e) {
+    if(lm) lm.remove();
+    addMsg('❌ Error: '+e.message, 'bot');
+  }
+}
+
+function buildMatCtx() {
+  var total=0, withMat=0, ok=0, no=0, way=0;
+  Object.values(osIdx).flat().forEach(function(ev) {
+    total++;
+    var mts=ev.mts||[];
+    if(mts.length) { withMat++; mts.forEach(function(_,i){ var s=getMatStatus(ev.oid,i); if(s==='ok')ok++; else if(s==='no')no++; else if(s==='way')way++; }); }
+  });
+  return 'RESUMEN: '+total+' OS totales, '+withMat+' con materiales.\nESTADOS: ✅ '+ok+' | ⛔ '+no+' | 🚚 '+way;
+}
+
+function searchOSLocal(queryType, queryValue) {
+  if(!queryValue) return [];
+  var val=(queryValue||'').toLowerCase().trim(), results=[];
+  Object.entries(osIdx).forEach(function(e) {
+    var fecha=e[0], evs=e[1];
+    if(queryType==='fecha') { if(fecha.includes(val)||val.includes(fecha.slice(5))) results.push.apply(results,evs); return; }
+    evs.forEach(function(ev) {
+      var m=false;
+      if(queryType==='email') m=(ev.em_cliente||ev.em||'').toLowerCase().includes(val);
+      else if(queryType==='order_id') m=(ev.oid||'').toLowerCase()===val;
+      else if(queryType==='aliado') m=(ev.al||ev.l||ev.em||'').toLowerCase().includes(val);
+      else if(queryType==='tipo') m=(ev.tc||ev.t||'').toLowerCase().includes(val);
+      if(m) results.push(ev);
+    });
+  });
+  return results;
+}
+
+function renderOSMaterialCards(os_list) {
+  var msgs=document.getElementById('agent-msgs'); if(!msgs) return;
+  var wrap=document.createElement('div'); wrap.style.cssText='width:100%;margin-top:4px;';
+  os_list.slice(0,10).forEach(function(ev) {
+    var oid=ev.oid||'', tc=ev.tc||ev.t||'', st=ev.st||'',
+        city=ev.ci||'', tec=ev.op||ev.p||'', dir=(ev.dir||ev.r||'').substring(0,45),
+        mts=ev.mts||[], obs=(ev.des||ev.obs||'').substring(0,200);
+    var stColor=st==='D'||st==='done'?'#D1FAE5':st==='C'||st==='cancelled'?'#FEE2E2':'#FEF3C7';
+    var stLabel=st==='D'||st==='done'?'✅ Ejecutada':st==='C'||st==='cancelled'?'❌ Cancelada':'⏳ Pendiente';
+    var matsHTML='';
+    if(mts.length) {
+      matsHTML='<div style="margin-top:6px;border-top:1px solid #EDE9FE;padding-top:5px"><div style="font-size:.62rem;font-weight:700;color:#6D28D9;margin-bottom:4px">📦 MATERIALES</div>';
+      mts.forEach(function(mat,idx) {
+        var s=getMatStatus(oid,idx);
+        var matRow=document.createElement('div');matRow.style.cssText='display:flex;align-items:center;gap:4px;padding:3px 6px;background:#EDE9FE;border:1px solid #C4B5FD;border-radius:5px;margin-bottom:3px';
+          +'<span style="flex:1;font-size:.7rem;color:#4C1D95">'+mat+'</span>'
+          +'<button class="msb ok'+(s==='ok'?' active':'')+'" onclick="setMatStatus(\''+oid+'\','+idx+',\'ok\')">✅</button>'
+          +'<button class="msb no'+(s==='no'?' active':'')+'" onclick="setMatStatus(\''+oid+'\','+idx+',\'no\')">⛔</button>'
+          +'<button class="msb way'+(s==='way'?' active':'')+'" onclick="setMatStatus(\''+oid+'\','+idx+',\'way\')">🚚</button>'
+          +'</div>';
+      });
+      matsHTML+='</div>';
+    }
+    var card=document.createElement('div');
+    card.style.cssText='background:#fff;border:1px solid #E5E7EB;border-left:4px solid #501C7C;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:.74rem;';
+    card.innerHTML='<div style="display:flex;gap:5px;align-items:center;margin-bottom:5px">'
+      +'<span style="background:#DBEAFE;color:#1E40AF;font-weight:700;padding:1px 7px;border-radius:10px;font-size:.62rem">'+tc+'</span>'
+      +'<span style="background:'+stColor+';padding:1px 7px;border-radius:10px;font-size:.62rem;font-weight:700">'+stLabel+'</span>'
+      +'</div>'
+      +'<div style="font-family:monospace;font-size:.62rem;color:#374151;margin-bottom:4px;user-select:all;word-break:break-all">'+oid+'</div>'
+      +'<div style="font-size:.72rem;color:#374151;margin-bottom:2px">📍 '+city+(dir?' — '+dir:'')+'</div>'
+      +'<div style="font-size:.7rem;color:#6B7280;margin-bottom:4px">👷 '+tec+'</div>'
+      +(obs?'<div style="background:#EFF6FF;border-left:3px solid #2563EB;padding:4px 8px;border-radius:0 5px 5px 0;font-size:.68rem;color:#1E40AF;margin-bottom:4px">🔍 '+obs+'</div>':'')
+      +(obs?'<div style="background:#EFF6FF;border-left:3px solid #2563EB;padding:4px 8px;border-radius:0 5px 5px 0;font-size:.68rem;color:#1E40AF;margin-bottom:4px">🔍 '+obs+'</div>':'');
+    if(matsEl) card.appendChild(matsEl);
+    wrap.appendChild(card);
+  });
+  if(os_list.length>1) {
+    var btn=document.createElement('button');
+    btn.className='btn btn-secondary btn-sm';
+    btn.style.cssText='width:100%;margin-top:4px;font-size:.71rem';
+    btn.textContent='⬇ Exportar '+os_list.length+' OS a Excel';
+    btn.onclick=function(){exportMatExcelFromList(os_list);};
+    wrap.appendChild(btn);
+  }
+  msgs.appendChild(wrap); msgs.scrollTop=msgs.scrollHeight;
+}
+
+// ══ EXPORT / IMPORT ═══════════════════════════════════════
+function exportMatExcel() {
+  var all=Object.values(osIdx).flat();
+  exportMatExcelFromList(all);
+}
+
+function exportMatExcelFromList(os_list) {
+  if(!os_list||!os_list.length){ addMsg('⚠️ No hay OS.','bot'); return; }
+  var rows=[['ID ORDEN','TIPO','ESTADO','FECHA','CIUDAD','TÉCNICO','DIRECCIÓN','MATERIAL','ESTADO MATERIAL']];
+  os_list.forEach(function(ev) {
+    var oid=ev.oid||'', mts=ev.mts||[];
+    var base=[oid,ev.tc||ev.t||'',ev.st||'',ev.ti||'',ev.ci||'',ev.op||ev.p||'',ev.dir||ev.r||''];
+    if(!mts.length) { rows.push([...base,'(sin materiales)','❓']); }
+    else mts.forEach(function(mat,idx) {
+      var s=getMatStatus(oid,idx);
+      var sl=s==='ok'?'✅ Disponible':s==='no'?'⛔ Faltante':s==='way'?'🚚 En camino':'❓ Sin verificar';
+      rows.push([...base,mat,sl]);
+    });
+  });
+  var csv=rows.map(function(r){return r.map(function(c){var s=String(c||'').replace(/"/g,'""');return s.includes(',')||s.includes('"')?'"'+s+'"':s;}).join(',');}).join('\n');
+  var blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='Materiales_OS_'+new Date().toISOString().split('T')[0]+'.csv'; a.click();
+  addMsg('✅ Exportado: '+(rows.length-1)+' filas.','bot');
+}
+
+function importMatExcel(file) {
+  if(!file) return;
+  addMsg('⏳ Leyendo: '+file.name,'loading');
+  var r=new FileReader();
+  r.onload=function(e) {
+    try {
+      var wb=XLSX.read(e.target.result,{type:'binary'});
+      var rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
+      var upd=0,nf=0;
+      rows.forEach(function(row) {
+        var oid=row['ID ORDEN']||row['ORDER_ID']||'';
+        var mat=row['MATERIAL']||'';
+        var stl=row['ESTADO MATERIAL']||'';
+        if(!oid||!mat) return;
+        var st=stl.includes('Disponible')||stl.includes('✅')||stl.toLowerCase()==='ok'?'ok':
+               stl.includes('Faltante')||stl.includes('⛔')||stl.toLowerCase()==='no'?'no':
+               stl.includes('camino')||stl.includes('🚚')||stl.toLowerCase()==='way'?'way':'';
+        if(!st) return;
+        var found=false;
+        Object.values(osIdx).flat().forEach(function(ev) {
+          if(ev.oid===oid) {
+            (ev.mts||[]).forEach(function(m,i){
+              if(m.includes(mat.substring(0,15))||mat.includes(m.substring(0,15))){
+                matStatus[oid+':'+i]=st; upd++; found=true;
+              }
+            });
+          }
+        });
+        if(!found) nf++;
+      });
+      try{localStorage.setItem('mat_status',JSON.stringify(matStatus));}catch(e){}
+      if(selDate) renderOSList(selDate);
+      var ml=document.getElementById('agent-msgs');
+      if(ml&&ml.lastChild&&ml.lastChild.classList.contains('loading')) ml.lastChild.remove();
+      addMsg('✅ Importado: '+upd+' materiales actualizados'+(nf?' · ⚠️ '+nf+' sin OS':'')+'.','bot');
+    } catch(err) {
+      var ml=document.getElementById('agent-msgs');
+      if(ml&&ml.lastChild&&ml.lastChild.classList.contains('loading')) ml.lastChild.remove();
+      addMsg('❌ Error: '+err.message,'bot');
+    }
+  };
+  r.readAsBinaryString(file);
+}
+
 </script>
 <!-- __D__ -->
 </body>
