@@ -418,6 +418,22 @@ textarea.fi{resize:vertical;min-height:60px}
 .msb.no  { background:#FEE2E2;color:#991B1B; }
 .msb.way { background:#FEF3C7;color:#92400E; }
 
+
+/* ── MATERIAL A UTILIZAR ── */
+.mat-util-header {
+  font-size:.68rem;font-weight:700;color:#6D28D9;
+  margin-bottom:5px;display:flex;align-items:center;gap:4px;
+}
+.mat-util-box {
+  background:#EDE9FE;border:1px solid #C4B5FD;
+  border-radius:8px;padding:8px 10px;margin-top:6px;
+}
+.mat-util-row {
+  font-size:.72rem;color:#4C1D95;
+  display:flex;gap:6px;margin-bottom:3px;align-items:center;
+}
+.mat-util-label { color:#7C3AED;font-weight:600;min-width:100px; }
+
 </style>
 </head>
 <body>
@@ -2878,7 +2894,7 @@ function osCardHTML(ev, key) {
       '</div>'+
       (ev.nt_m?'<div class="os-nota">📌 '+ev.nt_m+'</div>':'')+
       readBtns+
-      +(ev.mts&&ev.mts.length?renderMatHtml(ev.oid||ev.o,ev.mts):parseMaterialFromDesc(ev.des||ev.ob||'').length?renderMatHtml(ev.oid||ev.o,parseMaterialFromDesc(ev.des||ev.ob||'')):'')+
+      +(function(){ var oid2=ev.oid||ev.o; var mts2=ev.mts&&ev.mts.length?ev.mts:parseMaterialFromDesc((ev.des||ev.ob||ev.description||'').substring(0,500)); return mts2.length?renderMatHtml(oid2,mts2):''; }())+
       '<div class="edit-section">'+
         '<div class="edit-row"><label>Estado</label>'+
           '<select class="edit-select" id="est-'+ev.oid+'-'+ev.aid+'">'+estOpts+'</select>'+
@@ -4317,8 +4333,8 @@ function renderMatHtml(oid, mts) {
               : hasNo  ? '<span style="color:#991B1B;font-weight:700">⛔ Faltante</span>'
               : '<span style="color:#92400E">❓ '+mts.length+' mat.</span>';
   var cid = 'ml-'+oid.slice(-8);
-  var h = '<div class="mat-section">'
-    +'<div class="mat-title">🔧 Materiales '+summary+'</div>'
+  var h = '<div class="mat-util-box">'
+    +'<div class="mat-util-header">📦 Material a utilizar '+summary+'</div>'
     +'<div id="'+cid+'" style="display:none">'
     +mts.map(function(mat,idx){
       var s=getMatStatus(oid,idx);
