@@ -409,14 +409,11 @@ textarea.fi{resize:vertical;min-height:60px}
 /* ── MATERIALES ── */
 .mat-section { margin-top:6px;padding-top:6px;border-top:1px solid #EDE9FE; }
 .mat-title { font-size:.62rem;font-weight:700;color:#6D28D9;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px; }
-.mat-item { display:flex;align-items:center;gap:5px;font-size:.7rem;padding:3px 6px;border-radius:5px;background:#EDE9FE;border:1px solid #C4B5FD;margin-bottom:3px; }
-.mat-item-txt { flex:1;color:#4C1D95; }
-.mat-btns { display:flex;gap:2px; }
-.msb { border:none;border-radius:4px;padding:2px 5px;font-size:.6rem;font-weight:700;cursor:pointer;font-family:inherit;opacity:.6;transition:all .15s; }
+.mat-item { display:flex;align-items:center;gap:5px;font-size:.7rem;padding:3px 6px;border-radius:5px;background:#EDE9FE;border:1px solid #C4B5FD;margin-bottom:3px;flex-wrap:wrap; }
+.mat-item-txt { flex:1;color:#4C1D95;min-width:70px; }
+.mat-btns { display:flex;gap:2px;flex-wrap:wrap; }
+.msb { border:none;border-radius:4px;padding:2px 5px;font-size:.62rem;font-weight:700;cursor:pointer;font-family:inherit;opacity:.55;transition:all .15s;white-space:nowrap; }
 .msb:hover,.msb.active { opacity:1;transform:scale(1.05); }
-.msb.ok  { background:#D1FAE5;color:#065F46; }
-.msb.no  { background:#FEE2E2;color:#991B1B; }
-.msb.way { background:#FEF3C7;color:#92400E; }
 
 
 /* ── MATERIAL A UTILIZAR ── */
@@ -1022,12 +1019,28 @@ const ST={
   cancel:{label:'Cancelada',  icon:'❌',bar:'#DC2626',card:'st-cancel',tag:'tag-cancel'},
   pending:{label:'Pendiente', icon:'⏳',bar:'#2563EB',card:'st-pend', tag:'tag-pend'},
 };
+// Estado del MATERIAL de la OS — es UN solo estado por tarjeta (conjunto),
+// no por cada material individual. Si algo puntual no se surtió o hay una
+// aclaración, eso va en la nota de la tarjeta (ev.nt_m), no aquí.
 const MAT={
-  '':       {label:'Sin definir',  bg:'#F3F4F6',cl:'#6B7280'},
-  completo:  {label:'✅ Completo',   bg:'#D1FAE5',cl:'#065F46'},
-  faltante:  {label:'⛔ Faltante',   bg:'#FEE2E2',cl:'#991B1B'},
-  camino:    {label:'🚚 En camino',  bg:'#FEF3C7',cl:'#92400E'},
+  '':            {label:'⏳ Pendiente',               bg:'#F3F4F6',cl:'#6B7280'},
+  camino:        {label:'🚚 En camino',                bg:'#FEF3C7',cl:'#92400E'},
+  entregado:     {label:'✅ Entregado',                bg:'#D1FAE5',cl:'#065F46'},
+  aliado:        {label:'🤝 Lo suministró el aliado',  bg:'#DBEAFE',cl:'#1E40AF'},
+  cancelado:     {label:'🚫 Cancelado',                bg:'#FEE2E2',cl:'#991B1B'},
+  reprogramado:  {label:'🔄 Reprogramado',             bg:'#FDE68A',cl:'#78350F'},
+  // Compatibilidad con datos guardados antes de este cambio:
+  completo:      {label:'✅ Entregado',                bg:'#D1FAE5',cl:'#065F46'},
+  faltante:      {label:'🚫 Cancelado',                bg:'#FEE2E2',cl:'#991B1B'},
 };
+// Opciones que se muestran en los selects de "Material" (sin duplicar los
+// valores heredados 'completo'/'faltante', que solo quedan para leer datos viejos).
+const MAT_OPCIONES = ['','camino','entregado','aliado','cancelado','reprogramado'];
+function _matKeyCanonico(v) {
+  if (v === 'completo') return 'entregado';
+  if (v === 'faltante') return 'cancelado';
+  return v || '';
+}
 const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const DIAS=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 
@@ -2856,6 +2869,7 @@ function buildFilters() {
 }
 
 function applyFilters() {
+  _migrarMatStatusAgregadoLegacy();
   const al=document.getElementById('f-al')?.value||'';
   const sta=document.getElementById('f-sta')?.value||'';
   const mat=document.getElementById('f-mat')?.value||'';
@@ -3146,8 +3160,8 @@ function osCardHTML(ev, key) {
     var s=v?ST[v]:null;
     return '<option value="'+v+'"'+(ev.em_m===v?' selected':'')+'>'+(s?s.icon+' '+s.label:'Sin override')+'</option>';
   }).join('');
-  var matOpts=Object.entries(MAT).map(function(e){
-    return '<option value="'+e[0]+'"'+((ev.mat||'')===e[0]?' selected':'')+'>'+e[1].label+'</option>';
+  var matOpts=MAT_OPCIONES.map(function(k){
+    return '<option value="'+k+'"'+(_matKeyCanonico(ev.mat)===k?' selected':'')+'>'+MAT[k].label+'</option>';
   }).join('');
   var depTag='<span class="tag" style="background:'+co.bg+';color:'+co.text+';border:1px solid '+co.bar+'40">◼ '+ev.sta+'</span>';
 
@@ -3187,7 +3201,7 @@ function osCardHTML(ev, key) {
       '</div>'+
       (ev.nt_m?'<div class="os-nota">📌 '+ev.nt_m+'</div>':'')+
       readBtns+
-      +(function(){ var oid2=ev.oid||ev.o; var mts2=ev.mts&&ev.mts.length?ev.mts:parseMaterialFromDesc((ev.des||ev.ob||ev.description||'').substring(0,500)); return mts2.length?renderMatHtml(oid2,mts2):''; }())+
+      +(function(){ var oid2=ev.oid||ev.o; var mts2=ev.mts&&ev.mts.length?ev.mts:parseMaterialFromDesc((ev.des||ev.ob||ev.description||'').substring(0,500)); return mts2.length?renderMatHtml(oid2,mts2,ev.mat):''; }())+
       '<div class="edit-section">'+
         '<div class="edit-row"><label>Estado</label>'+
           '<select class="edit-select" id="est-'+ev.oid+'-'+ev.aid+'">'+estOpts+'</select>'+
@@ -4215,8 +4229,8 @@ function renderAsstEditRow(ev, fecha){
     const s=v?ST[v]:null;
     return '<option value="'+v+'"'+(ev.em_m===v?' selected':'')+'>'+(s?s.icon+' '+s.label:'Sin override')+'</option>';
   }).join('');
-  const matOpts=Object.entries(MAT).map(function(e){
-    return '<option value="'+e[0]+'"'+((ev.mat||'')===e[0]?' selected':'')+'>'+e[1].label+'</option>';
+  const matOpts=MAT_OPCIONES.map(function(k){
+    return '<option value="'+k+'"'+(_matKeyCanonico(ev.mat)===k?' selected':'')+'>'+MAT[k].label+'</option>';
   }).join('');
 
   return '<div class="asst-finding" style="cursor:default">'+
@@ -4285,6 +4299,26 @@ function _normalizarEstadoOSAsst(v) {
   if (s.includes('cancel')) return 'cancel';
   if (s.includes('pendient') || s.includes('programad')) return 'pending';
   return '';
+}
+
+// Normaliza el texto de una celda de "Estado de material" a los 6 códigos
+// del estado AGREGADO de material de la tarjeta (ver MAT). Como es un
+// estado por tarjeta (no por ítem individual), cualquier archivo que traiga
+// esta columna actualiza el mismo campo que ya se edita manualmente en
+// "Material" dentro de la tarjeta. Devuelve null si el texto no se
+// reconoce, para no sobrescribir con basura lo que ya había (distinto de
+// '', que sí es un resultado válido: "Pendiente").
+function _normalizarEstadoMaterialTexto(v) {
+  var s = nrm(v);
+  if (!s) return null;
+  if (s.includes('aliado')) return 'aliado'; // "lo suministró/suministro el aliado"
+  if (s.includes('cancel')) return 'cancelado';
+  if (s.includes('reprogram')) return 'reprogramado';
+  if (s.includes('camino') || s.includes('transito')) return 'camino';
+  if (s.includes('entreg') || s.includes('complet') || s.includes('disponible') || s.includes('suminist')) return 'entregado';
+  if (s.includes('pendient')) return '';
+  if (s.includes('faltante') || s.includes('no disponible')) return 'cancelado';
+  return null;
 }
 
 // Busca la tarjeta que corresponde a una fila del archivo, priorizando la
@@ -4356,7 +4390,7 @@ function ejecutarActualizacionMaterial(){
     entry[1].forEach(function(ev){ candidatos.push({ev:ev, fecha:fecha}); });
   });
 
-  let actualizadas=0, sinMatch=0, estadosCambiados=0, estadosIgnorados=0;
+  let actualizadas=0, sinMatch=0, estadosCambiados=0, estadosIgnorados=0, materialesIgnorados=0;
   const detalles=[];
 
   asstMaterialRows.forEach(function(row){
@@ -4370,7 +4404,11 @@ function ejecutarActualizacionMaterial(){
 
     if(match){
       let algoCambio = false;
-      if(cMat && row[cMat]){ match.ev.mat = String(row[cMat]); algoCambio = true; }
+      if(cMat && row[cMat]){
+        const nuevoMat = _normalizarEstadoMaterialTexto(row[cMat]);
+        if(nuevoMat !== null){ match.ev.mat = nuevoMat; algoCambio = true; }
+        else materialesIgnorados++;
+      }
       if(cNota && row[cNota]){ match.ev.nt_m = String(row[cNota]); algoCambio = true; }
       if(cEstado && row[cEstado]){
         const nuevoEstado = _normalizarEstadoOSAsst(row[cEstado]);
@@ -4395,7 +4433,8 @@ function ejecutarActualizacionMaterial(){
   let html = '<div class="asst-answer">✅ '+actualizadas+' OS actualizadas'+
     (estadosCambiados?' ('+estadosCambiados+' con cambio de estado)':'')+
     ' · '+sinMatch+' fila(s) sin coincidencia o sin cambios'+
-    (estadosIgnorados?' · '+estadosIgnorados+' estado(s) no reconocidos (se dejaron igual)':'')+
+    (estadosIgnorados?' · '+estadosIgnorados+' estado(s) de OS no reconocidos (se dejaron igual)':'')+
+    (materialesIgnorados?' · '+materialesIgnorados+' estado(s) de material no reconocidos (se dejaron igual)':'')+
     '</div>';
   detalles.slice(0,30).forEach(function(d){ html += findingRowHTML(d.ev, d.fecha); });
   if(resultEl) resultEl.innerHTML = html;
@@ -4663,15 +4702,34 @@ var __ACT__={};
 
 
 // ══ MATERIALES ══════════════════════════════════════════════
-var matStatus = {};
-try { matStatus = JSON.parse(localStorage.getItem('mat_status')||'{}'); } catch(e){}
-
-function setMatStatus(oid, idx, st) {
-  matStatus[oid+':'+idx] = st;
-  try { localStorage.setItem('mat_status', JSON.stringify(matStatus)); } catch(e){}
-  if(selDate) renderOSList(selDate);
+// El estado de material es UNO SOLO por tarjeta (ev.mat, ver MAT arriba),
+// no por cada material individual. Esto migra, una sola vez, los datos
+// que hayan quedado guardados con el sistema anterior (por ítem) a ese
+// único estado agregado, para no perder lo que ya se había marcado.
+var _matLegacyMigrado = false;
+function _migrarMatStatusAgregadoLegacy() {
+  if (_matLegacyMigrado) return;
+  _matLegacyMigrado = true;
+  var raw = {};
+  try { raw = JSON.parse(localStorage.getItem('mat_status')||'{}'); } catch(e){ raw = {}; }
+  if (!raw || !Object.keys(raw).length) return;
+  var porOid = {};
+  Object.keys(raw).forEach(function(k){
+    var oid = k.split(':')[0];
+    (porOid[oid] = porOid[oid] || []).push(raw[k]);
+  });
+  Object.values(osIdx).forEach(function(evs){
+    evs.forEach(function(ev){
+      if (ev.mat) return; // ya tiene estado agregado, no se toca
+      var estados = porOid[ev.oid || ev.o];
+      if (!estados || !estados.length) return;
+      if (estados.some(function(s){ return s==='no'; })) ev.mat = 'cancelado';
+      else if (estados.every(function(s){ return s==='ok'; })) ev.mat = 'entregado';
+      else if (estados.some(function(s){ return s==='way'; })) ev.mat = 'camino';
+    });
+  });
+  try { localStorage.removeItem('mat_status'); } catch(e){}
 }
-function getMatStatus(oid, idx) { return matStatus[oid+':'+idx]||''; }
 
 function parseMaterialFromDesc(desc) {
   if(!desc) return [];
@@ -4692,36 +4750,28 @@ function parseMaterialFromDesc(desc) {
   return mts;
 }
 
-function renderMatHtml(oid, mts) {
+function renderMatHtml(oid, mts, matAgregado) {
   if(!mts || !mts.length) return '';
-  var allOk = mts.every(function(_,i){ return getMatStatus(oid,i)==='ok'; });
-  var hasNo  = mts.some(function(_,i){ return getMatStatus(oid,i)==='no'; });
-  var summary = allOk ? '<span style="color:#065F46;font-weight:700">✅ Completo</span>'
-              : hasNo  ? '<span style="color:#991B1B;font-weight:700">⛔ Faltante</span>'
-              : '<span style="color:#92400E">❓ '+mts.length+' mat.</span>';
+  var info = MAT[matAgregado||''] || MAT[''];
+  var summary = '<span style="color:'+info.cl+';font-weight:700">'+info.label+'</span>';
   var cid = 'ml-'+oid.slice(-8);
   var h = '<div class="mat-util-box">'
     +'<div class="mat-util-header">📦 Material a utilizar '+summary+'</div>'
     +'<div id="'+cid+'" style="display:none">'
-    +mts.map(function(mat,idx){
-      var s=getMatStatus(oid,idx);
-      return '<div class="mat-item"><span class="mat-item-txt">'+mat+'</span>'
-        +'<div class="mat-btns">'
-        +'<button class="msb ok'+(s==='ok'?' active':'')+'" onclick="setMatStatus(\''+oid+'\','+idx+',\'ok\')">✅</button>'
-        +'<button class="msb no'+(s==='no'?' active':'')+'" onclick="setMatStatus(\''+oid+'\','+idx+',\'no\')">⛔</button>'
-        +'<button class="msb way'+(s==='way'?' active':'')+'" onclick="setMatStatus(\''+oid+'\','+idx+',\'way\')">🚚</button>'
-        +'</div></div>';
+    +mts.map(function(mat){
+      return '<div class="mat-item"><span class="mat-item-txt">'+mat+'</span></div>';
     }).join('')
     +'</div>'
     +'<button onclick="var d=document.getElementById(\''+cid+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" '
     +'style="font-size:.62rem;color:#501C7C;background:none;border:none;cursor:pointer;padding:2px 0">ver materiales ▸</button>'
+    +'<div style="font-size:.62rem;color:#7C3AED;margin-top:2px">El estado se cambia abajo en "Material" — aplica a todos los materiales de esta OS.</div>'
     +'</div>';
   return h;
 }
 
 // ══ IMPORT EXCEL MATERIALES ═════════════════════════════════
-// Solo actualiza: estado material, notas, estado OS override
-// NO modifica ningún otro campo de la tarjeta
+// Solo actualiza: estado de material (agregado, por tarjeta), notas,
+// estado OS override — NO modifica ningún otro campo de la tarjeta.
 function importMatExcel(file) {
   if(!file) return;
   showToast('⏳ Leyendo: '+file.name);
@@ -4732,73 +4782,53 @@ function importMatExcel(file) {
       var ws = wb.Sheets[wb.SheetNames[0]];
       var rows = XLSX.utils.sheet_to_json(ws, {defval:''});
 
-      var updMat=0, updNota=0, updEst=0, notFound=0;
+      var candidatos = [];
+      Object.entries(osIdx).forEach(function(entry){
+        var fecha = entry[0];
+        entry[1].forEach(function(ev){ candidatos.push({ev:ev, fecha:fecha}); });
+      });
+
+      var updMat=0, updNota=0, updEst=0, notFound=0, ignorados=0;
 
       rows.forEach(function(row) {
         // Columnas esperadas (flexibles)
         var oid    = String(row['ID ORDEN']||row['ORDER_ID']||row['id_orden']||'').trim();
-        var mat    = String(row['MATERIAL']||row['material']||'').trim();
+        var dir    = String(row['DIRECCIÓN']||row['DIRECCION']||row['direccion']||'').trim();
+        var email  = String(row['CORREO']||row['EMAIL']||row['correo']||'').trim();
         var stLbl  = String(row['ESTADO MATERIAL']||row['estado_material']||'').trim();
         var nota   = String(row['NOTA']||row['nota']||row['NOTAS']||'').trim();
         var estOS  = String(row['ESTADO OS']||row['estado_os']||'').trim();
 
-        if(!oid) return;
+        if(!oid && !dir && !email) return;
 
-        // Mapear estado material
-        var st = '';
-        if(stLbl.includes('Disponible')||stLbl.includes('✅')||stLbl.toLowerCase()==='ok') st='ok';
-        else if(stLbl.includes('Faltante')||stLbl.includes('⛔')||stLbl.toLowerCase()==='no') st='no';
-        else if(stLbl.includes('camino')||stLbl.includes('🚚')||stLbl.toLowerCase()==='way') st='way';
+        var match = _buscarCandidatoAsst(nrm(oid), nrm(dir), nrm(email), '', '', candidatos);
+        if(!match){ notFound++; return; }
+        var ev = match.ev;
 
-        // Buscar la OS en osIdx
-        var found = false;
-        Object.values(osIdx).flat().forEach(function(ev) {
-          if(!ev || (ev.oid||ev.o) !== oid) return;
-          found = true;
-          var evOid = ev.oid||ev.o;
+        // 1. Estado de material — un solo estado por tarjeta (agregado)
+        if(stLbl) {
+          var nuevoMat = _normalizarEstadoMaterialTexto(stLbl);
+          if(nuevoMat !== null){ ev.mat = nuevoMat; updMat++; }
+          else ignorados++;
+        }
 
-          // 1. Estado material — solo si hay material y estado
-          if(mat && st) {
-            var mts = ev.mts || parseMaterialFromDesc(ev.des||ev.ob||'');
-            mts.forEach(function(m, idx) {
-              if(m.includes(mat.substring(0,15))||mat.includes(m.substring(0,15))) {
-                matStatus[evOid+':'+idx] = st;
-                updMat++;
-              }
-            });
-            // Si no encontró por texto, usar índice si viene en columna IDX
-            var matIdx = parseInt(row['IDX']||row['idx']||'');
-            if(!isNaN(matIdx)) {
-              matStatus[evOid+':'+matIdx] = st;
-              updMat++;
-            }
-          }
+        // 2. Nota — solo si hay texto
+        if(nota) { ev.nt_m = nota; updNota++; }
 
-          // 2. Nota — solo si hay texto
-          if(nota) {
-            ev.nt_m = nota;
-            updNota++;
-          }
-
-          // 3. Estado OS override — solo si viene explícito
-          if(estOS) {
-            var stMap = {'done':'D','ejecutada':'D','cancelada':'C','cancelled':'C','pendiente':'P'};
-            var stCode = stMap[estOS.toLowerCase()] || '';
-            if(stCode) { ev.em_m = stCode; updEst++; }
-          }
-        });
-
-        if(!found) notFound++;
+        // 3. Estado OS override — solo si viene explícito y se reconoce
+        if(estOS) {
+          var nuevoEstado = _normalizarEstadoOSAsst(estOS);
+          if(nuevoEstado) { ev.em_m = nuevoEstado; updEst++; }
+        }
       });
 
-      // Guardar matStatus en localStorage
-      try { localStorage.setItem('mat_status', JSON.stringify(matStatus)); } catch(e){}
-
-      // Re-renderizar
-      if(selDate) renderOSList(selDate);
+      saveToLocalStorage();
       applyFilters();
+      if(selDate) renderOSList(selDate);
+      pushFullDatasetToGAS();
 
-      showToast('✅ Importado: '+updMat+' mat, '+updNota+' notas, '+updEst+' estados'+(notFound?' · ⚠️ '+notFound+' sin OS':''));
+      showToast('✅ Importado: '+updMat+' materiales, '+updNota+' notas, '+updEst+' estados'+
+        (notFound?' · ⚠️ '+notFound+' sin OS':'')+(ignorados?' · '+ignorados+' estado(s) de material no reconocidos':''));
 
     } catch(err) {
       showToast('❌ Error: '+err.message, 'danger');
@@ -4808,24 +4838,21 @@ function importMatExcel(file) {
 }
 
 // ══ EXPORT EXCEL MATERIALES ══════════════════════════════════
+// Una fila por OS: el estado de material es agregado (uno solo por
+// tarjeta), no por cada material individual.
 function exportMatExcel() {
-  var rows = [['ID ORDEN','TIPO','ESTADO','FECHA','CIUDAD','TÉCNICO','ALIADO','DIRECCIÓN','MATERIAL','IDX','ESTADO MATERIAL','NOTA']];
+  var rows = [['ID ORDEN','TIPO','ESTADO','FECHA','CIUDAD','TÉCNICO','ALIADO','DIRECCIÓN','CORREO','MATERIALES','ESTADO MATERIAL','NOTA']];
   Object.entries(osIdx).forEach(function(entry) {
     var fecha=entry[0], evs=entry[1];
     evs.forEach(function(ev) {
       var oid = ev.oid||ev.o||'';
       var mts = ev.mts || parseMaterialFromDesc(ev.des||ev.ob||'');
-      var base = [oid, ev.tc||ev.t||'', calcStatus(ev), fecha,
-                  ev.ci||'', ev.op||ev.p||'', ev.al||'', ev.dir||ev.r||''];
-      if(!mts.length) {
-        rows.push([...base,'','','','']);
-      } else {
-        mts.forEach(function(mat,idx){
-          var s=getMatStatus(oid,idx);
-          var sl=s==='ok'?'✅ Disponible':s==='no'?'⛔ Faltante':s==='way'?'🚚 En camino':'';
-          rows.push([...base, mat, idx, sl, ev.nt_m||'']);
-        });
-      }
+      var matInfo = MAT[_matKeyCanonico(ev.mat)] || MAT[''];
+      rows.push([
+        oid, ev.tc||ev.t||'', calcStatus(ev), fecha,
+        ev.ci||'', ev.op||ev.p||'', ev.al||'', ev.dir||ev.r||'', ev.em||'',
+        mts.join(' | '), matInfo.label, ev.nt_m||''
+      ]);
     });
   });
   var csv = rows.map(function(r){
