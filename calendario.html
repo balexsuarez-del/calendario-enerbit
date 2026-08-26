@@ -405,6 +405,19 @@ textarea.fi{resize:vertical;min-height:60px}
   border-bottom:1px solid var(--bd);padding:6px 0;font-size:.76rem}
 .asst-match-row select,.asst-match-row input{font-size:.76rem;padding:3px 6px;border-radius:6px;border:1px solid var(--bd)}
 
+
+/* ── MATERIALES ── */
+.mat-section { margin-top:6px;padding-top:6px;border-top:1px solid #EDE9FE; }
+.mat-title { font-size:.62rem;font-weight:700;color:#6D28D9;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px; }
+.mat-item { display:flex;align-items:center;gap:5px;font-size:.7rem;padding:3px 6px;border-radius:5px;background:#EDE9FE;border:1px solid #C4B5FD;margin-bottom:3px; }
+.mat-item-txt { flex:1;color:#4C1D95; }
+.mat-btns { display:flex;gap:2px; }
+.msb { border:none;border-radius:4px;padding:2px 5px;font-size:.6rem;font-weight:700;cursor:pointer;font-family:inherit;opacity:.6;transition:all .15s; }
+.msb:hover,.msb.active { opacity:1;transform:scale(1.05); }
+.msb.ok  { background:#D1FAE5;color:#065F46; }
+.msb.no  { background:#FEE2E2;color:#991B1B; }
+.msb.way { background:#FEF3C7;color:#92400E; }
+
 </style>
 </head>
 <body>
@@ -2865,6 +2878,7 @@ function osCardHTML(ev, key) {
       '</div>'+
       (ev.nt_m?'<div class="os-nota">📌 '+ev.nt_m+'</div>':'')+
       readBtns+
+      +(ev.mts&&ev.mts.length?renderMatHtml(ev.oid||ev.o,ev.mts):parseMaterialFromDesc(ev.des||ev.ob||'').length?renderMatHtml(ev.oid||ev.o,parseMaterialFromDesc(ev.des||ev.ob||'')):'')+
       '<div class="edit-section">'+
         '<div class="edit-row"><label>Estado</label>'+
           '<select class="edit-select" id="est-'+ev.oid+'-'+ev.aid+'">'+estOpts+'</select>'+
@@ -4263,6 +4277,187 @@ Object.entries(__OS_RAW__).forEach(function(e){
   });
 });
 var __ACT__={};
+
+
+// ══ MATERIALES ══════════════════════════════════════════════
+var matStatus = {};
+try { matStatus = JSON.parse(localStorage.getItem('mat_status')||'{}'); } catch(e){}
+
+function setMatStatus(oid, idx, st) {
+  matStatus[oid+':'+idx] = st;
+  try { localStorage.setItem('mat_status', JSON.stringify(matStatus)); } catch(e){}
+  if(selDate) renderOSList(selDate);
+}
+function getMatStatus(oid, idx) { return matStatus[oid+':'+idx]||''; }
+
+function parseMaterialFromDesc(desc) {
+  if(!desc) return [];
+  var mts = [];
+  var pats = [
+    [/Comunicaci[oó]n:\s*([^\n\r,]{3,35})/i,'📡'],
+    [/Paneles o cajas:\s*([^\n\r,]{3,30})/i,'📦'],
+    [/Cable de control:\s*([^\n\r,]{3,30})/i,'🔗'],
+    [/Apertura:\s*([^\n\r,]{3,25})/i,'🔓'],
+    [/Medidor.*[Ii]nstalar[:\s]+([^\n\r,]{4,25})/,'🔌'],
+    [/Medidor.*[Ss]itio[:\s]+([^\n\r,]{4,25})/,'📟'],
+  ];
+  pats.forEach(function(p){
+    var m = desc.match(p[0]);
+    if(m && m[1].trim().toLowerCase()!=='no aplica' && m[1].trim().toLowerCase()!=='n/a')
+      mts.push(p[1]+' '+m[1].trim().substring(0,30));
+  });
+  return mts;
+}
+
+function renderMatHtml(oid, mts) {
+  if(!mts || !mts.length) return '';
+  var allOk = mts.every(function(_,i){ return getMatStatus(oid,i)==='ok'; });
+  var hasNo  = mts.some(function(_,i){ return getMatStatus(oid,i)==='no'; });
+  var summary = allOk ? '<span style="color:#065F46;font-weight:700">✅ Completo</span>'
+              : hasNo  ? '<span style="color:#991B1B;font-weight:700">⛔ Faltante</span>'
+              : '<span style="color:#92400E">❓ '+mts.length+' mat.</span>';
+  var cid = 'ml-'+oid.slice(-8);
+  var h = '<div class="mat-section">'
+    +'<div class="mat-title">🔧 Materiales '+summary+'</div>'
+    +'<div id="'+cid+'" style="display:none">'
+    +mts.map(function(mat,idx){
+      var s=getMatStatus(oid,idx);
+      return '<div class="mat-item"><span class="mat-item-txt">'+mat+'</span>'
+        +'<div class="mat-btns">'
+        +'<button class="msb ok'+(s==='ok'?' active':'')+'" onclick="setMatStatus(\''+oid+'\','+idx+',\'ok\')">✅</button>'
+        +'<button class="msb no'+(s==='no'?' active':'')+'" onclick="setMatStatus(\''+oid+'\','+idx+',\'no\')">⛔</button>'
+        +'<button class="msb way'+(s==='way'?' active':'')+'" onclick="setMatStatus(\''+oid+'\','+idx+',\'way\')">🚚</button>'
+        +'</div></div>';
+    }).join('')
+    +'</div>'
+    +'<button onclick="var d=document.getElementById(\''+cid+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" '
+    +'style="font-size:.62rem;color:#501C7C;background:none;border:none;cursor:pointer;padding:2px 0">ver materiales ▸</button>'
+    +'</div>';
+  return h;
+}
+
+// ══ IMPORT EXCEL MATERIALES ═════════════════════════════════
+// Solo actualiza: estado material, notas, estado OS override
+// NO modifica ningún otro campo de la tarjeta
+function importMatExcel(file) {
+  if(!file) return;
+  showToast('⏳ Leyendo: '+file.name);
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var wb = XLSX.read(e.target.result, {type:'binary'});
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+
+      var updMat=0, updNota=0, updEst=0, notFound=0;
+
+      rows.forEach(function(row) {
+        // Columnas esperadas (flexibles)
+        var oid    = String(row['ID ORDEN']||row['ORDER_ID']||row['id_orden']||'').trim();
+        var mat    = String(row['MATERIAL']||row['material']||'').trim();
+        var stLbl  = String(row['ESTADO MATERIAL']||row['estado_material']||'').trim();
+        var nota   = String(row['NOTA']||row['nota']||row['NOTAS']||'').trim();
+        var estOS  = String(row['ESTADO OS']||row['estado_os']||'').trim();
+
+        if(!oid) return;
+
+        // Mapear estado material
+        var st = '';
+        if(stLbl.includes('Disponible')||stLbl.includes('✅')||stLbl.toLowerCase()==='ok') st='ok';
+        else if(stLbl.includes('Faltante')||stLbl.includes('⛔')||stLbl.toLowerCase()==='no') st='no';
+        else if(stLbl.includes('camino')||stLbl.includes('🚚')||stLbl.toLowerCase()==='way') st='way';
+
+        // Buscar la OS en osIdx
+        var found = false;
+        Object.values(osIdx).flat().forEach(function(ev) {
+          if(!ev || (ev.oid||ev.o) !== oid) return;
+          found = true;
+          var evOid = ev.oid||ev.o;
+
+          // 1. Estado material — solo si hay material y estado
+          if(mat && st) {
+            var mts = ev.mts || parseMaterialFromDesc(ev.des||ev.ob||'');
+            mts.forEach(function(m, idx) {
+              if(m.includes(mat.substring(0,15))||mat.includes(m.substring(0,15))) {
+                matStatus[evOid+':'+idx] = st;
+                updMat++;
+              }
+            });
+            // Si no encontró por texto, usar índice si viene en columna IDX
+            var matIdx = parseInt(row['IDX']||row['idx']||'');
+            if(!isNaN(matIdx)) {
+              matStatus[evOid+':'+matIdx] = st;
+              updMat++;
+            }
+          }
+
+          // 2. Nota — solo si hay texto
+          if(nota) {
+            ev.nt_m = nota;
+            updNota++;
+          }
+
+          // 3. Estado OS override — solo si viene explícito
+          if(estOS) {
+            var stMap = {'done':'D','ejecutada':'D','cancelada':'C','cancelled':'C','pendiente':'P'};
+            var stCode = stMap[estOS.toLowerCase()] || '';
+            if(stCode) { ev.em_m = stCode; updEst++; }
+          }
+        });
+
+        if(!found) notFound++;
+      });
+
+      // Guardar matStatus en localStorage
+      try { localStorage.setItem('mat_status', JSON.stringify(matStatus)); } catch(e){}
+
+      // Re-renderizar
+      if(selDate) renderOSList(selDate);
+      applyFilters();
+
+      showToast('✅ Importado: '+updMat+' mat, '+updNota+' notas, '+updEst+' estados'+(notFound?' · ⚠️ '+notFound+' sin OS':''));
+
+    } catch(err) {
+      showToast('❌ Error: '+err.message, 'danger');
+    }
+  };
+  reader.readAsBinaryString(file);
+}
+
+// ══ EXPORT EXCEL MATERIALES ══════════════════════════════════
+function exportMatExcel() {
+  var rows = [['ID ORDEN','TIPO','ESTADO','FECHA','CIUDAD','TÉCNICO','ALIADO','DIRECCIÓN','MATERIAL','IDX','ESTADO MATERIAL','NOTA']];
+  Object.entries(osIdx).forEach(function(entry) {
+    var fecha=entry[0], evs=entry[1];
+    evs.forEach(function(ev) {
+      var oid = ev.oid||ev.o||'';
+      var mts = ev.mts || parseMaterialFromDesc(ev.des||ev.ob||'');
+      var base = [oid, ev.tc||ev.t||'', calcStatus(ev), fecha,
+                  ev.ci||'', ev.op||ev.p||'', ev.al||'', ev.dir||ev.r||''];
+      if(!mts.length) {
+        rows.push([...base,'','','','']);
+      } else {
+        mts.forEach(function(mat,idx){
+          var s=getMatStatus(oid,idx);
+          var sl=s==='ok'?'✅ Disponible':s==='no'?'⛔ Faltante':s==='way'?'🚚 En camino':'';
+          rows.push([...base, mat, idx, sl, ev.nt_m||'']);
+        });
+      }
+    });
+  });
+  var csv = rows.map(function(r){
+    return r.map(function(c){
+      var s=String(c||'').replace(/"/g,'""');
+      return s.includes(',')||s.includes('"')?'"'+s+'"':s;
+    }).join(',');
+  }).join('\n');
+  var blob = new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='Materiales_OS_'+new Date().toISOString().split('T')[0]+'.csv';
+  a.click();
+  showToast('✅ Excel exportado: '+(rows.length-1)+' filas');
+}
+
 </script>
 </body>
 </html>
