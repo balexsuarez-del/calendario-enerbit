@@ -2868,9 +2868,10 @@ function osCardHTML(ev, key) {
 
   // Clase de tarjeta
   var cardBorder=chg?'border:2px solid #F59E0B!important;background:#FFFBEB!important;box-shadow:0 0 12px rgba(245,158,11,.3)!important':
-                 (ds==='done')?'border-left:5px solid '+ST.done.bar+'!important;background:#ECFDF5!important':
-                 (ds==='reprog')?'border-left:5px solid '+ST.reprog.bar+'!important;background:#FFFBEB!important':
-                 (ds==='cancel')?'border-left:5px solid '+ST.cancel.bar+'!important;background:#FEF2F2!important':
+                 (ds==='done')?'border:2px solid #16A34A!important;background:#F0FDF4!important':
+                 (ds==='reprog')?'border:2px solid #F59E0B!important;background:#FFFBEB!important':
+                 (ds==='cancel')?'border:2px solid #DC2626!important;background:#FFF5F5!important':
+                 (ds==='pending')?'border:2px solid #FF7900!important;background:#FFF7ED!important':
                  emp==='kt'?'border-left:5px solid #2563EB!important;background:#EFF6FF!important':
                  emp==='usr'?'border-left:5px solid #F59E0B!important;background:#FFFBEB!important':
                  emp==='eb'?'border-left:5px solid #7028AE!important':
