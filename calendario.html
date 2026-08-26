@@ -3104,6 +3104,7 @@ function toggleCortesOverlay() {
   ov.style.display = abrir ? 'flex' : 'none';
   if(abrir){
     if(!cortesMap) initCortesMap();
+    setTimeout(function(){ if(cortesMap) cortesMap.invalidateSize(); }, 200);
     cargarDatosCortes(false);
     cargarUltimoReporte();
     inicializarArrastreCortes();
@@ -3310,7 +3311,7 @@ async function limpiarEventosCortes() {
   }
 }
 
-async function cargarDatosCortes(manual) {
+async async function cargarDatosCortes(manual) {
   var lbl = document.getElementById('cortes-actualizado');
   if(manual) lbl.textContent = 'Actualizando…';
   try {
