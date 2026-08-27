@@ -2531,7 +2531,16 @@ function processExcelRows(rows, nombre) {
     co:     findCol(['CANCEL_OBSERVATIONS','OBSERVACIÓN DE CANCELACIÓN','cancel_obs','obs_cancel']),
     tec:    findCol(['TECNICOS_ASIGNADOS','TECNICO ASIGNADO','tecnicos','TECNICO','tec']),
     medidor:findCol(['METER_SERIAL_INSTALLED','MEDIDOR INSTALADO','MEDIDOR','medidor','METER_SERIAL']),
+    matNombre:  findCol(['MATERIAL_NOMBRE','MATERIAL NAME','NOMBRE MATERIAL','material_name','nombre_material']),
+    matCant:    findCol(['MATERIAL_CANTIDAD','CANTIDAD MATERIAL','material_quantity','cantidad_material','QUANTITY']),
+    matUnidad:  findCol(['MATERIAL_UNIDAD','UNIDAD MATERIAL','material_unit','unidad_material','UNIT']),
+    matCategoria: findCol(['MATERIAL_CATEGORIA','CATEGORIA MATERIAL','material_category','categoria_material']),
   };
+
+  // Si el archivo trae columnas de material estructuradas (una fila por
+  // material, repitiendo la misma OS), este flag activa que se acumulen
+  // en una lista por tarjeta en vez de limitarse al texto de la descripción.
+  var tieneColumnasMaterial = !!COL.matNombre;
 
   // Mostrar columnas detectadas en consola
   console.log('Columnas detectadas:', JSON.stringify(COL));
@@ -2551,6 +2560,18 @@ function processExcelRows(rows, nombre) {
     v = String(v).trim();
     if(v === 'nan' || v === 'null' || v === 'undefined') v = '';
     return max ? v.substring(0, max) : v;
+  }
+
+  function construirLineaMaterial(row) {
+    if(!tieneColumnasMaterial) return null;
+    var nombre = getVal(row, COL.matNombre, 60);
+    if(!nombre) return null;
+    var cant = getVal(row, COL.matCant, 10);
+    var unidad = getVal(row, COL.matUnidad, 10);
+    var cat = getVal(row, COL.matCategoria, 30);
+    var linea = (cat ? ('['+cat+'] ') : '') + nombre;
+    if(cant) linea += ' — ' + cant + (unidad ? (' '+unidad) : '');
+    return linea;
   }
 
   // Preservar notas/estado/material actuales (clave: orden + punto de servicio)
@@ -2623,6 +2644,8 @@ function processExcelRows(rows, nombre) {
       medidor: getVal(row, COL.medidor, 40)
     };
 
+    var lineaMaterial = construirLineaMaterial(row);
+
     // Merge incremental (por orden + punto de servicio, no solo por orden)
     if(!osIdx[fecha]) osIdx[fecha]=[];
     var existIdx=osIdx[fecha].findIndex(function(e){return e.oid===oid&&e.aid===aid;});
@@ -2632,6 +2655,10 @@ function processExcelRows(rows, nombre) {
       ev.em_m=ex.em_m||ev.em_m;
       ev.nt_m=ex.nt_m||ev.nt_m;
       ev.mat=ex.mat||ev.mat;
+      // Acumular materiales: si el archivo trae una fila por cada material
+      // de la misma OS, se van sumando a la lista en vez de perder las
+      // anteriores cada vez que se repite la orden.
+      ev.mts = ex.mts ? ex.mts.slice() : [];
       osIdx[fecha][existIdx]=ev;
     } else {
       // Este punto de servicio, ¿estaba en otra fecha? mover
@@ -2642,9 +2669,13 @@ function processExcelRows(rows, nombre) {
         ev.em_m=old.ev.em_m||ev.em_m;
         ev.nt_m=old.ev.nt_m||ev.nt_m;
         ev.mat=old.ev.mat||ev.mat;
+        ev.mts=old.ev.mts?old.ev.mts.slice():[];
+      } else {
+        ev.mts=[];
       }
       osIdx[fecha].push(ev);
     }
+    if(lineaMaterial && ev.mts.indexOf(lineaMaterial)===-1) ev.mts.push(lineaMaterial);
     if(ev.sta) depColor(ev.sta);
     ok++;
   });
