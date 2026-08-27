@@ -2659,6 +2659,15 @@ function processExcelRows(rows, nombre) {
       // de la misma OS, se van sumando a la lista en vez de perder las
       // anteriores cada vez que se repite la orden.
       ev.mts = ex.mts ? ex.mts.slice() : [];
+      // Desempate de aliado: si esta misma orden+punto de servicio ya
+      // estaba resuelta a un aliado EXTERNO y la fila nueva trae un correo
+      // interno @enerbit.co (reasignación histórica sin depurar en el
+      // archivo), no se pisa el aliado externo por el interno.
+      var exEraEnerbit = /@enerbit\.co$/i.test(ex.em||'');
+      var nuevaEsEnerbit = /@enerbit\.co$/i.test(ev.em||'');
+      if(!exEraEnerbit && nuevaEsEnerbit && ex.em){
+        ev.em = ex.em; ev.al = ex.al; ev.op = ex.op; ev.tec = ex.tec;
+      }
       osIdx[fecha][existIdx]=ev;
     } else {
       // Este punto de servicio, ¿estaba en otra fecha? mover
@@ -2670,6 +2679,11 @@ function processExcelRows(rows, nombre) {
         ev.nt_m=old.ev.nt_m||ev.nt_m;
         ev.mat=old.ev.mat||ev.mat;
         ev.mts=old.ev.mts?old.ev.mts.slice():[];
+        var oldEraEnerbit = /@enerbit\.co$/i.test(old.ev.em||'');
+        var nuevaEsEnerbit2 = /@enerbit\.co$/i.test(ev.em||'');
+        if(!oldEraEnerbit && nuevaEsEnerbit2 && old.ev.em){
+          ev.em = old.ev.em; ev.al = old.ev.al; ev.op = old.ev.op; ev.tec = old.ev.tec;
+        }
       } else {
         ev.mts=[];
       }
