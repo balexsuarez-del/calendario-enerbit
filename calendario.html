@@ -4212,11 +4212,14 @@ function renderAsstMaterialMasivo(){
   html += selectHTML('asst-map-material','Columna con estado de material', guess(['material','estado material']));
   html += selectHTML('asst-map-nota','Columna con nota', guess(['nota','observacion']));
   html += selectHTML('asst-map-estado','Columna con estado de la OS', guess(['estado de la orden','estado os','status','estado']));
+  html += selectHTML('asst-map-ciudad','Columna con ciudad/municipio', guess(['ciudad','municipio']));
+  html += selectHTML('asst-map-depto','Columna con departamento', guess(['departamento','ubicacion de la orden']));
   html += '<div class="asst-empty" style="text-align:left;margin-top:2px">'+
-    'Solo se tocan los campos que mapees aquí (material, nota, estado) — el resto de la '+
+    'Solo se tocan los campos que mapees aquí (material, nota, estado, ciudad, departamento) — el resto de la '+
     'tarjeta (materiales previos, historial, dirección, técnico, etc.) queda intacto. '+
     'Si mapeas "Estado", acepta textos como pendiente/ejecutada/cancelada/reprogramada; '+
-    'valores que no reconozca se ignoran, no se borra el estado que ya había.</div>'+
+    'valores que no reconozca se ignoran, no se borra el estado que ya había. '+
+    'Ciudad y departamento solo ubican geográficamente la tarjeta (para el mapa y filtros), no cambian nada más.</div>'+
   '<div style="margin-top:12px;display:flex;gap:8px">'+
     '<button class="btn btn-primary btn-sm" onclick="ejecutarActualizacionMaterial()">Buscar y actualizar</button>'+
     '<button class="btn btn-ghost btn-sm" onclick="asstMaterialRows=null;renderAsstMaterialMasivo()">Cambiar archivo</button>'+
@@ -4422,9 +4425,10 @@ function ejecutarActualizacionMaterial(){
   const getSel = function(id){ return document.getElementById(id)?.value||''; };
   const cOid=getSel('asst-map-oid'), cDir=getSel('asst-map-dir'), cEmail=getSel('asst-map-email'),
         cMed=getSel('asst-map-medidor'), cNom=getSel('asst-map-nombre'),
-        cMat=getSel('asst-map-material'), cNota=getSel('asst-map-nota'), cEstado=getSel('asst-map-estado');
+        cMat=getSel('asst-map-material'), cNota=getSel('asst-map-nota'), cEstado=getSel('asst-map-estado'),
+        cCiudad=getSel('asst-map-ciudad'), cDepto=getSel('asst-map-depto');
 
-  if(!cMat && !cNota && !cEstado){ toast('Selecciona al menos una columna de material, nota o estado a aplicar','err'); return; }
+  if(!cMat && !cNota && !cEstado && !cCiudad && !cDepto){ toast('Selecciona al menos una columna de material, nota, estado, ciudad o departamento a aplicar','err'); return; }
 
   // Todas las tarjetas son candidatas (no solo pendientes) — un archivo de
   // estado de OS puede necesitar marcar como cancelada/reprogramada una
@@ -4460,6 +4464,10 @@ function ejecutarActualizacionMaterial(){
         if(nuevoEstado){ match.ev.em_m = nuevoEstado; algoCambio = true; estadosCambiados++; }
         else estadosIgnorados++;
       }
+      // Ciudad/departamento: solo ubican geográficamente la tarjeta (mapa,
+      // filtros, biblioteca) — no tocan estado, material, notas ni nada más.
+      if(cCiudad && row[cCiudad]){ match.ev.ci = String(row[cCiudad]).trim().substring(0,30); algoCambio = true; }
+      if(cDepto && row[cDepto]){ match.ev.sta = String(row[cDepto]).trim().substring(0,25); algoCambio = true; }
       if(algoCambio){ actualizadas++; detalles.push(match); }
       else sinMatch++;
     } else {
