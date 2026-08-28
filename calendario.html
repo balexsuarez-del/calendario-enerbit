@@ -13,7 +13,7 @@
   --gy:#1F2937;--gm:#6B7280;--gl:#D1D5DB;
   --gn:#059669;--rd:#DC2626;--am:#F59E0B;--bl:#2563EB;
   --bg:#F9FAFB;--card:#fff;--bd:#E5E7EB;
-  --done:#059669;--reprog:#F59E0B;--cancel:#DC2626;--pend:#2563EB;
+  --done:#059669;--reprog:#FB923C;--cancel:#DC2626;--pend:#2563EB;
   --sh:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06);
   --sh-md:0 4px 6px rgba(0,0,0,.07),0 2px 4px rgba(0,0,0,.06);
   --sh-lg:0 10px 15px rgba(0,0,0,.1),0 4px 6px rgba(0,0,0,.05);
@@ -174,7 +174,7 @@ html,body{height:100%;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
 .panel-kpis{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .panel-kpis span{font-size:.65rem;padding:2px 8px;border-radius:9px;font-weight:700}
 .pk-done{background:rgba(5,150,105,.25);color:#6EE7B7}
-.pk-reprog{background:rgba(245,158,11,.25);color:#FCD34D}
+.pk-reprog{background:rgba(251,146,60,.25);color:#FED7AA}
 .pk-cancel{background:rgba(220,38,38,.25);color:#FCA5A5}
 .pk-pend{background:rgba(37,99,235,.35);color:#BFDBFE;font-weight:800}
 .pk-act{background:rgba(112,40,174,.3);color:#DDD6FE}
@@ -197,7 +197,7 @@ html,body{height:100%;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
 .os-card{border:1.5px solid var(--bd);border-radius:var(--r-lg);overflow:hidden;display:flex;transition:box-shadow .15s;cursor:grab}
 .os-card:active{cursor:grabbing}
 .os-card.st-done  {border-color:#A7F3D0;background:#F0FDF4}
-.os-card.st-reprog{border-color:#FDE68A;background:#FFFBEB}
+.os-card.st-reprog{border-color:#FED7AA;background:#FFF7ED}
 .os-card.st-cancel{border-color:#FECACA;background:#FFF5F5}
 .os-card.st-pend  {border-color:#BFDBFE;background:#EFF6FF}
 .os-card.st-act   {border-color:#DDD6FE;background:#FAF5FF}
@@ -212,12 +212,12 @@ html,body{height:100%;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
 .os-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
 .tag{font-size:.62rem;padding:2px 8px;border-radius:9px;font-weight:600;display:inline-flex}
 .tag-done  {background:#D1FAE5;color:#065F46}
-.tag-reprog{background:#FEF3C7;color:#92400E}
+.tag-reprog{background:#FFF1E6;color:#C2410C}
 .tag-cancel{background:#FEE2E2;color:#991B1B}
 .tag-pend  {background:#DBEAFE;color:#1E40AF}
 .os-nota{font-size:.68rem;color:var(--pd);margin-top:5px;border-left:2px solid var(--pp);padding-left:7px}
 .motivo{margin-top:6px;border-left:3px solid;border-radius:0 6px 6px 0;padding:5px 9px;font-size:.69rem;line-height:1.45}
-.motivo.rpg{background:rgba(245,158,11,.08);border-color:var(--reprog);color:#78350F}
+.motivo.rpg{background:rgba(251,146,60,.08);border-color:var(--reprog);color:#C2410C}
 .motivo.cnl{background:rgba(220,38,38,.07);border-color:var(--cancel);color:#7F1D1D}
 
 /* EDICIÓN OS */
@@ -1015,7 +1015,7 @@ function calcStatus(ev){
 }
 const ST={
   done:  {label:'Ejecutada',  icon:'✅',bar:'#059669',card:'st-done',  tag:'tag-done'},
-  reprog:{label:'Reprogramada',icon:'🔄',bar:'#F59E0B',card:'st-reprog',tag:'tag-reprog'},
+  reprog:{label:'Reprogramada',icon:'🔄',bar:'#FB923C',card:'st-reprog',tag:'tag-reprog'},
   cancel:{label:'Cancelada',  icon:'❌',bar:'#DC2626',card:'st-cancel',tag:'tag-cancel'},
   pending:{label:'Pendiente', icon:'⏳',bar:'#2563EB',card:'st-pend', tag:'tag-pend'},
 };
@@ -3173,7 +3173,7 @@ function osCardHTML(ev, key) {
   // Clase de tarjeta
   var cardBorder=chg?'border:2px solid #F59E0B!important;background:#FFFBEB!important;box-shadow:0 0 12px rgba(245,158,11,.3)!important':
                  (ds==='done')?'border:2px solid #16A34A!important;background:#F0FDF4!important':
-                 (ds==='reprog')?'border:2px solid #F59E0B!important;background:#FFFBEB!important':
+                 (ds==='reprog')?'border:2px solid #FB923C!important;background:#FFF7ED!important':
                  (ds==='cancel')?'border:2px solid #DC2626!important;background:#FFF5F5!important':
                  (ds==='pending')?'border:2px solid #FF7900!important;background:#FFF7ED!important':
                  emp==='kt'?'border-left:5px solid #2563EB!important;background:#EFF6FF!important':
@@ -3499,9 +3499,9 @@ async function exportDayPNG(){
   const os=(filtOS[selDate]||[]).slice(0,20), acts=actEv[selDate]||[];
   const ORD={reprog:0,cancel:1,pending:2,done:3};
   const sorted=[...os].sort((a,b)=>(ORD[calcStatus(a)]??4)-(ORD[calcStatus(b)]??4));
-  const BAR={done:'#059669',reprog:'#F59E0B',cancel:'#DC2626',pending:'#2563EB'};
-  const BGG={done:'#D1FAE5',reprog:'#FEF3C7',cancel:'#FEE2E2',pending:'#DBEAFE'};
-  const BCL={done:'#065F46',reprog:'#92400E',cancel:'#991B1B',pending:'#1E40AF'};
+  const BAR={done:'#059669',reprog:'#FB923C',cancel:'#DC2626',pending:'#2563EB'};
+  const BGG={done:'#D1FAE5',reprog:'#FFF1E6',cancel:'#FEE2E2',pending:'#DBEAFE'};
+  const BCL={done:'#065F46',reprog:'#C2410C',cancel:'#991B1B',pending:'#1E40AF'};
   const card=document.createElement('div');
   card.style.cssText='position:fixed;left:-9999px;top:0;width:500px;background:#fff;font-family:Segoe UI,sans-serif;border-radius:12px;overflow:hidden;';
   card.innerHTML=`<div style="background:#501C7C;padding:14px 18px;color:#fff">
@@ -4192,6 +4192,20 @@ function renderAsstMaterialMasivo(){
       return cands.some(function(c){ return nrm(h).includes(nrm(c)); });
     }) || '(ninguna)';
   }
+  // Para ciudad/departamento es crítico NO adivinar una columna que en
+  // realidad describe al aliado/operador/técnico (ej. "Ciudad del Aliado",
+  // "Departamento Operador") — eso pondría la sede del contratista en vez
+  // de dónde está realmente la orden. Si el nombre de la columna menciona
+  // aliado/operador/técnico/contratista, no se propone como sugerencia
+  // automática; queda en "(ninguna)" para que la persona la elija a mano.
+  function guessUbicacion(cands){
+    const excluir=['aliado','operador','tecnico','técnico','contratista','operator'];
+    return asstMaterialHeaders.find(function(h){
+      const hn = nrm(h);
+      if(excluir.some(function(x){ return hn.includes(nrm(x)); })) return false;
+      return cands.some(function(c){ return hn.includes(nrm(c)); });
+    }) || '(ninguna)';
+  }
   function selectHTML(id, label, guessVal){
     let sel = '<div class="asst-match-row"><span>'+label+'</span><select id="'+id+'">';
     opts.forEach(function(o){
@@ -4212,9 +4226,12 @@ function renderAsstMaterialMasivo(){
   html += selectHTML('asst-map-material','Columna con estado de material', guess(['material','estado material']));
   html += selectHTML('asst-map-nota','Columna con nota', guess(['nota','observacion']));
   html += selectHTML('asst-map-estado','Columna con estado de la OS', guess(['estado de la orden','estado os','status','estado']));
-  html += selectHTML('asst-map-ciudad','Columna con ciudad/municipio', guess(['ciudad','municipio']));
-  html += selectHTML('asst-map-depto','Columna con departamento', guess(['departamento','ubicacion de la orden']));
-  html += '<div class="asst-empty" style="text-align:left;margin-top:2px">'+
+  html += selectHTML('asst-map-ciudad','Columna con ciudad/municipio', guessUbicacion(['ciudad','municipio']));
+  html += selectHTML('asst-map-depto','Columna con departamento', guessUbicacion(['departamento','ubicacion de la orden']));
+  html += '<div class="asst-empty" style="text-align:left;margin-top:2px;color:#92400E;font-weight:600">'+
+    '⚠️ En ciudad/departamento, usa la columna de dónde está la orden (dirección del servicio), '+
+    'nunca la sede del aliado/operador/técnico — mezclar eso dañaría los filtros por departamento.</div>'+
+  '<div class="asst-empty" style="text-align:left;margin-top:2px">'+
     'Solo se tocan los campos que mapees aquí (material, nota, estado, ciudad, departamento) — el resto de la '+
     'tarjeta (materiales previos, historial, dirección, técnico, etc.) queda intacto. '+
     'Si mapeas "Estado", acepta textos como pendiente/ejecutada/cancelada/reprogramada; '+
