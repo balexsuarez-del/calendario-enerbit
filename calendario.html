@@ -2672,11 +2672,19 @@ function processExcelRows(rows, nombre) {
     var st  = mapEstado(stRaw) || (stRaw.toLowerCase()==='done'?'done':'pending');
     var prev= savedNotes[key]||{};
 
+    // Ciudad/departamento aprendidos: si alguna vez corrigieron a mano este
+    // mismo texto de ciudad (venía mal en un archivo anterior), se usa la
+    // corrección en vez del texto crudo del archivo.
+    var ciCruda = getVal(row, COL.city, 30);
+    var correccionCiudad = correccionesAprendidas.ciudades[nrm(ciCruda)];
+    var ciFinal = correccionCiudad ? correccionCiudad.ci : ciCruda;
+    var staFinal = correccionCiudad ? correccionCiudad.sta : getVal(row, COL.state, 25);
+
     var ev = {
       oid: oid, aid: aid, fecha: fecha,
       st:  st, em_m: prev.em_m||'',
-      ci:  getVal(row, COL.city, 30),
-      sta: getVal(row, COL.state, 25),
+      ci:  ciFinal,
+      sta: staFinal,
       tc:  getVal(row, COL.type, 30),
       tn:  getVal(row, COL.type, 60),
       op:  getVal(row, COL.op, 40),
@@ -2692,6 +2700,15 @@ function processExcelRows(rows, nombre) {
       nt_m:prev.nt_m||'', mat:prev.mat||'',
       medidor: getVal(row, COL.medidor, 40)
     };
+
+    // Aliado aprendido: si para esta orden+dirección ya se resolvió antes a
+    // mano un conflicto de aliados (en Diagnóstico), se respeta esa decisión
+    // aunque este archivo vuelva a traer el correo/aliado equivocado.
+    var aliadoAprendido = correccionesAprendidas.aliados[_claveAliadoAprendido(oid, dirVal)];
+    if (aliadoAprendido) {
+      ev.em = aliadoAprendido.em; ev.al = aliadoAprendido.al;
+      ev.op = aliadoAprendido.op; ev.tec = aliadoAprendido.tec;
+    }
 
     var lineaMaterial = construirLineaMaterial(row);
 
@@ -3315,6 +3332,10 @@ function osCardHTML(ev, key) {
         '<div class="edit-row"><label>Material</label>'+
           '<select class="edit-select" id="mat-'+ev.oid+'-'+ev.aid+'">'+matOpts+'</select>'+
           '<button class="save-btn" onclick="saveMaterial(\''+ev.oid+'\',\''+ev.aid+'\')">💾</button></div>'+
+        '<div class="edit-row"><label>Ciudad</label>'+
+          '<input class="edit-select" id="ci-'+ev.oid+'-'+ev.aid+'" value="'+(ev.ci||'').replace(/"/g,'&quot;')+'" style="flex:1">'+
+          '<input class="edit-select" id="sta-'+ev.oid+'-'+ev.aid+'" placeholder="Depto" value="'+(ev.sta||'').replace(/"/g,'&quot;')+'" style="width:90px">'+
+          '<button class="save-btn" onclick="saveUbicacion(\''+ev.oid+'\',\''+ev.aid+'\')">💾</button></div>'+
         '<div class="nota-wrap">'+
           '<textarea id="nota-'+ev.oid+'-'+ev.aid+'" placeholder="Escribe una nota...">'+(ev.nt_m||'')+'</textarea>'+
           '<div class="nota-actions">'+
@@ -3349,6 +3370,24 @@ async function saveMaterial(oid,aid){
   patchOS(oid,aid,{mat:val});
   const d=await gasPost({action:'updateOSMaterial',order_id:oid,assignee_id:aid,material_estado:val});
   toast(d?.ok?'Material guardado ✓':' Material guardado (local)','ok');
+}
+
+async function saveUbicacion(oid,aid){
+  const nuevaCi=document.getElementById(`ci-${oid}-${aid}`)?.value||'';
+  const nuevaSta=document.getElementById(`sta-${oid}-${aid}`)?.value||'';
+  const evActual = Object.values(osIdx).flat().find(e=>e.oid===oid&&e.aid===aid);
+  const ciAnterior = evActual?.ci||'';
+  patchOS(oid,aid,{ci:nuevaCi, sta:nuevaSta});
+  renderOSList(selDate);
+  // Aprender: si el texto de ciudad que traía el archivo estaba mal, la
+  // próxima vez que aparezca ese mismo texto se corrige solo.
+  if(ciAnterior && nrm(ciAnterior)!==nrm(nuevaCi)){
+    correccionesAprendidas.ciudades[nrm(ciAnterior)] = {ci:nuevaCi, sta:nuevaSta};
+    guardarCorreccionesAprendidas();
+    toast('📍 Ubicación guardada y aprendida: "'+ciAnterior+'" → "'+nuevaCi+'" se corregirá sola la próxima vez','ok');
+  } else {
+    toast('Ubicación guardada ✓','ok');
+  }
 }
 
 async function saveNota(oid,aid){
@@ -4083,6 +4122,35 @@ function fusionarGrupoDuplicado(grupo){
     if(arr) osIdx[g.fecha] = arr.filter(function(e){ return e!==g.ev; });
   });
 }
+
+// ── Resolver conflicto de aliado a mano (Diagnóstico) y APRENDER la decisión ──
+async function elegirAliadoCorrectoAsst(idx, emailElegido){
+  const diag = ejecutarDiagnostico();
+  const grupo = diag.duplicadas[idx];
+  if(!grupo) return;
+  const candidato = grupo.find(function(g){ return (g.ev.em||'')===emailElegido; });
+  if(!candidato) return;
+  const correcto = {em: candidato.ev.em, al: candidato.ev.al, op: candidato.ev.op, tec: candidato.ev.tec};
+
+  // Aplicar a TODAS las tarjetas del grupo (misma orden+dirección) y
+  // quedarse con una sola: la de mejor estado, ya con el aliado correcto.
+  grupo.forEach(function(g){ Object.assign(g.ev, correcto); });
+  fusionarGrupoDuplicado(grupo);
+
+  // Aprender: la próxima vez que un archivo traiga esta misma orden+
+  // dirección con un aliado equivocado, se corrige sola.
+  const primero = grupo[0].ev;
+  correccionesAprendidas.aliados[_claveAliadoAprendido(primero.oid, primero.dir)] = correcto;
+  guardarCorreccionesAprendidas();
+
+  saveToLocalStorage();
+  applyFilters();
+  if(selDate) renderPaneContent();
+  await pushFullDatasetToGAS();
+  toast('✅ Aliado corregido a "'+(correcto.al||correcto.em)+'" y aprendido para la próxima carga','ok');
+  renderAsstDiagnostico();
+}
+
 async function fusionarUnGrupoAsst(idx, origen){
   const diag = ejecutarDiagnostico();
   const grupo = diag.duplicadosExactos[idx];
@@ -4187,14 +4255,21 @@ function renderAsstDiagnostico(){
   if(!duplicadas.length){
     html += '<div class="asst-empty">No encontré posibles duplicados</div>';
   } else {
-    duplicadas.slice(0,20).forEach(function(grupo){
+    duplicadas.slice(0,20).forEach(function(grupo, idx){
       const primero=grupo[0];
       const aliados=[...new Set(grupo.map(function(g){return g.ev.al||g.ev.em||'';}))];
       const nota = notaDuplicado(grupo).replace(/'/g,"\\'");
+      const botonesAliado = [...new Map(grupo.map(function(g){return [g.ev.em, g];})).values()]
+        .map(function(g){
+          return '<button class="btn btn-sm btn-secondary" style="margin-top:4px;margin-right:4px" '+
+            'onclick="event.stopPropagation();elegirAliadoCorrectoAsst('+idx+',\''+(g.ev.em||'').replace(/'/g,"\\'")+'\')">'+
+            '✓ Es '+(g.ev.al||g.ev.em||'sin correo')+'</button>';
+        }).join('');
       html += '<div class="asst-finding">'+
         '<div onclick="irYResaltarOS(\''+primero.ev.oid+'\',\''+encodeURIComponent(primero.ev.aid)+'\',\''+primero.fecha+'\')" style="cursor:pointer">'+
         '<b>'+grupo.length+' tarjetas</b> — '+(primero.ev.tc||'')+' · '+(primero.ev.ci||'')+
         '<div style="color:var(--gy);font-size:.74rem">'+(primero.ev.dir||'').slice(0,60)+' — aliados: '+aliados.join(', ')+'</div></div>'+
+        '<div>'+botonesAliado+'</div>'+
         '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();copiarNotaAsst(this,\''+nota+'\')">📋 Copiar nota</button>'+
       '</div>';
     });
@@ -4894,6 +4969,23 @@ Object.entries(__OS_RAW__).forEach(function(e){
 });
 var __ACT__={};
 
+
+// ══ MEMORIA DE CORRECCIONES (el agente aprende) ═══════════════
+// Guarda decisiones humanas para no repetir el mismo error en la próxima
+// carga de un archivo: (1) qué aliado es el correcto para una orden+
+// dirección cuando hubo un conflicto, y (2) a qué ciudad/departamento
+// corresponde realmente un texto que venía mal en el archivo.
+var correccionesAprendidas = {aliados:{}, ciudades:{}};
+try {
+  var _ca = localStorage.getItem('cal_learn');
+  if (_ca) correccionesAprendidas = JSON.parse(_ca);
+  if (!correccionesAprendidas.aliados) correccionesAprendidas.aliados = {};
+  if (!correccionesAprendidas.ciudades) correccionesAprendidas.ciudades = {};
+} catch(e){}
+function guardarCorreccionesAprendidas(){
+  try { localStorage.setItem('cal_learn', JSON.stringify(correccionesAprendidas)); } catch(e){}
+}
+function _claveAliadoAprendido(oid, dir){ return oid+'|'+nrm(dir||''); }
 
 // ══ MATERIALES ══════════════════════════════════════════════
 // El estado de material es UNO SOLO por tarjeta (ev.mat, ver MAT arriba),
