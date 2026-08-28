@@ -2608,15 +2608,15 @@ function processExcelRows(rows, nombre) {
     var dirVal = getVal(row, COL.dir, 80);
     var emailVal = getVal(row, COL.email, 60);
     var opVal = getVal(row, COL.op, 60);
-    // Punto de servicio = orden + dirección + correo del aliado/contratista.
-    // Si dos aliados distintos atendieron la misma dirección (reasignación),
-    // quedan como 2 tarjetas separadas en vez de pisarse entre sí. Respaldo
-    // en cascada cuando falta el correo (pasa seguido en OS de Normalización/
-    // AIV/NORM_CODE): usar el nombre del técnico, y si tampoco hay nombre,
-    // el índice de fila — así nunca dos técnicos/aliados distintos en la
-    // misma orden+dirección colisionan en la misma tarjeta por falta de dato.
+    // Punto de servicio = orden + dirección. Si hay dirección, ES la clave —
+    // no se mezcla con el correo/técnico, porque una misma orden+dirección
+    // reasignada varias veces (igual que en Snowflake: hasta 9 operadores
+    // distintos para el mismo punto real) debe quedar en UNA sola tarjeta,
+    // no una por cada reasignación histórica. Solo si no hay dirección
+    // (verdaderamente imposible de identificar el punto de servicio) se cae
+    // a correo/técnico/índice de fila para no fusionar puntos distintos a ciegas.
     var distintivo = emailVal ? emailVal.toLowerCase() : (opVal ? nrm(opVal) : 'r'+rowIdx);
-    var aid = getVal(row, COL.aid) || (oid+'|'+(dirVal||'')+'|'+distintivo);
+    var aid = getVal(row, COL.aid) || (dirVal ? (oid+'|'+dirVal) : (oid+'|sindir|'+distintivo));
     var key = oid+'|'+aid;
     var em  = getVal(row, COL.email);
     var stRaw = getVal(row, COL.status);
@@ -2659,14 +2659,18 @@ function processExcelRows(rows, nombre) {
       // de la misma OS, se van sumando a la lista en vez de perder las
       // anteriores cada vez que se repite la orden.
       ev.mts = ex.mts ? ex.mts.slice() : [];
-      // Desempate de aliado: si esta misma orden+punto de servicio ya
-      // estaba resuelta a un aliado EXTERNO y la fila nueva trae un correo
-      // interno @enerbit.co (reasignación histórica sin depurar en el
-      // archivo), no se pisa el aliado externo por el interno.
+      // Desempate cuando el mismo punto de servicio aparece repetido con
+      // datos distintos (reasignación histórica sin depurar): se queda con
+      // el de mejor estado (ejecutada > cancelada > reprogramada > pendiente)
+      // y, a igualdad de estado, con el aliado externo sobre un correo
+      // interno @enerbit.co — igual que el desempate ya usado en Snowflake.
+      var PRIORIDAD_ST = {done:3, cancel:2, reprog:1, pending:0};
       var exEraEnerbit = /@enerbit\.co$/i.test(ex.em||'');
       var nuevaEsEnerbit = /@enerbit\.co$/i.test(ev.em||'');
-      if(!exEraEnerbit && nuevaEsEnerbit && ex.em){
-        ev.em = ex.em; ev.al = ex.al; ev.op = ex.op; ev.tec = ex.tec;
+      var exPrio = PRIORIDAD_ST[ex.st] ?? -1, nuevaPrio = PRIORIDAD_ST[ev.st] ?? -1;
+      var exEsMejor = exPrio > nuevaPrio || (exPrio === nuevaPrio && !exEraEnerbit && nuevaEsEnerbit);
+      if(exEsMejor){
+        ev.st = ex.st; ev.em = ex.em; ev.al = ex.al; ev.op = ex.op; ev.tec = ex.tec;
       }
       osIdx[fecha][existIdx]=ev;
     } else {
