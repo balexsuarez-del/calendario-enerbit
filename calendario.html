@@ -4439,8 +4439,9 @@ function ejecutarActualizacionMaterial(){
     entry[1].forEach(function(ev){ candidatos.push({ev:ev, fecha:fecha}); });
   });
 
-  let actualizadas=0, sinMatch=0, estadosCambiados=0, estadosIgnorados=0, materialesIgnorados=0;
+  let actualizadas=0, sinMatch=0, estadosCambiados=0, estadosIgnorados=0, materialesIgnorados=0, reubicadas=0;
   const detalles=[];
+  const alertasUbicacion=[];
 
   asstMaterialRows.forEach(function(row){
     const vOid = cOid? nrm(row[cOid]) : '';
@@ -4466,14 +4467,34 @@ function ejecutarActualizacionMaterial(){
       }
       // Ciudad/departamento: solo ubican geográficamente la tarjeta (mapa,
       // filtros, biblioteca) — no tocan estado, material, notas ni nada más.
-      if(cCiudad && row[cCiudad]){ match.ev.ci = String(row[cCiudad]).trim().substring(0,30); algoCambio = true; }
-      if(cDepto && row[cDepto]){ match.ev.sta = String(row[cDepto]).trim().substring(0,25); algoCambio = true; }
+      // Si el valor del archivo es distinto al que ya tenía la tarjeta, se
+      // avisa explícitamente (la tarjeta se "reubica" geográficamente).
+      if(cCiudad && row[cCiudad]){
+        const nuevaCiudad = String(row[cCiudad]).trim().substring(0,30);
+        if(nuevaCiudad && nrm(nuevaCiudad) !== nrm(match.ev.ci||'')){
+          alertasUbicacion.push('OS '+(match.ev.oid||'')+': ciudad "'+(match.ev.ci||'(vacía)')+'" → "'+nuevaCiudad+'"');
+          reubicadas++;
+        }
+        match.ev.ci = nuevaCiudad; algoCambio = true;
+      }
+      if(cDepto && row[cDepto]){
+        const nuevoDepto = String(row[cDepto]).trim().substring(0,25);
+        if(nuevoDepto && nrm(nuevoDepto) !== nrm(match.ev.sta||'')){
+          alertasUbicacion.push('OS '+(match.ev.oid||'')+': departamento "'+(match.ev.sta||'(vacío)')+'" → "'+nuevoDepto+'"');
+          reubicadas++;
+        }
+        match.ev.sta = nuevoDepto; algoCambio = true;
+      }
       if(algoCambio){ actualizadas++; detalles.push(match); }
       else sinMatch++;
     } else {
       sinMatch++;
     }
   });
+
+  if(reubicadas>0){
+    toast('📍 '+reubicadas+' tarjeta(s) reubicada(s) geográficamente (ciudad/departamento corregidos)','ok');
+  }
 
   if(actualizadas>0){
     saveToLocalStorage();
@@ -4489,6 +4510,13 @@ function ejecutarActualizacionMaterial(){
     (estadosIgnorados?' · '+estadosIgnorados+' estado(s) de OS no reconocidos (se dejaron igual)':'')+
     (materialesIgnorados?' · '+materialesIgnorados+' estado(s) de material no reconocidos (se dejaron igual)':'')+
     '</div>';
+  if(alertasUbicacion.length){
+    html += '<div class="asst-answer" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A">'+
+      '📍 <b>'+reubicadas+' tarjeta(s) reubicada(s)</b> — ciudad/departamento no coincidía con lo que traía el archivo:<br>'+
+      alertasUbicacion.slice(0,15).map(function(a){ return '• '+a; }).join('<br>')+
+      (alertasUbicacion.length>15 ? '<br>…y '+(alertasUbicacion.length-15)+' más' : '')+
+    '</div>';
+  }
   detalles.slice(0,30).forEach(function(d){ html += findingRowHTML(d.ev, d.fecha); });
   if(resultEl) resultEl.innerHTML = html;
   toast(actualizadas+' OS actualizadas','ok');
