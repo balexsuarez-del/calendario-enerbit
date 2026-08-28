@@ -2222,6 +2222,61 @@ document.addEventListener('DOMContentLoaded', function() {
   cargarDatosIniciales();
 });
 
+// ── Respaldo local del dataset COMPLETO vía IndexedDB ───────────
+// localStorage tiene un límite de ~5-10MB por sitio; con miles de OS +
+// materiales + histórico, ese límite se queda corto y el guardado falla
+// en silencio (o con el aviso de "Demasiadas OS"). IndexedDB no tiene ese
+// techo práctico, así que el dataset completo vive ahí — 100% local a
+// este navegador, no afecta a nadie más ni al Google Sheets compartido.
+// Las notas/estado/material (livianas) se quedan en localStorage igual que antes.
+var IDB_NOMBRE = 'calendario_enerbit_db';
+var IDB_ALMACEN = 'kv';
+function idbAbrir(){
+  return new Promise(function(resolve, reject){
+    if(typeof indexedDB === 'undefined'){ reject(new Error('IndexedDB no disponible')); return; }
+    var req = indexedDB.open(IDB_NOMBRE, 1);
+    req.onupgradeneeded = function(e){
+      var db = e.target.result;
+      if(!db.objectStoreNames.contains(IDB_ALMACEN)) db.createObjectStore(IDB_ALMACEN);
+    };
+    req.onsuccess = function(e){ resolve(e.target.result); };
+    req.onerror = function(e){ reject(e.target.error); };
+  });
+}
+async function idbSet(key, value){
+  try {
+    var db = await idbAbrir();
+    return await new Promise(function(resolve){
+      var tx = db.transaction(IDB_ALMACEN, 'readwrite');
+      tx.objectStore(IDB_ALMACEN).put(value, key);
+      tx.oncomplete = function(){ resolve(true); };
+      tx.onerror = function(){ resolve(false); };
+    });
+  } catch(e){ return false; }
+}
+async function idbGet(key){
+  try {
+    var db = await idbAbrir();
+    return await new Promise(function(resolve){
+      var tx = db.transaction(IDB_ALMACEN, 'readonly');
+      var req = tx.objectStore(IDB_ALMACEN).get(key);
+      req.onsuccess = function(){ resolve(req.result===undefined?null:req.result); };
+      req.onerror = function(){ resolve(null); };
+    });
+  } catch(e){ return null; }
+}
+async function idbDelete(key){
+  try {
+    var db = await idbAbrir();
+    return await new Promise(function(resolve){
+      var tx = db.transaction(IDB_ALMACEN, 'readwrite');
+      tx.objectStore(IDB_ALMACEN).delete(key);
+      tx.oncomplete = function(){ resolve(true); };
+      tx.onerror = function(){ resolve(false); };
+    });
+  } catch(e){ return false; }
+}
+
 async function cargarDatosIniciales() {
   // Definir mapas de expansion localmente
   var AL = {eB:'enerBit',CE:'Circuitos Electricas',C3:'C3 Pronto Servicios',
@@ -2254,11 +2309,20 @@ async function cargarDatosIniciales() {
   }
 
   // 1) Sin Google Sheets disponible: preferir el dataset COMPLETO guardado en este
-  //    navegador (más reciente que lo incrustado en el archivo)
+  //    navegador (más reciente que lo incrustado en el archivo), ahora en IndexedDB.
   var localFull = null;
   try {
-    var lf = localStorage.getItem('cal_full_os');
-    if(lf) localFull = JSON.parse(lf);
+    localFull = await idbGet('cal_full_os');
+    if(!localFull) {
+      // Migración: si quedó un respaldo viejo en localStorage (de antes de
+      // este cambio), se usa una vez y se traslada a IndexedDB.
+      var lfLegacy = localStorage.getItem('cal_full_os');
+      if(lfLegacy) {
+        localFull = JSON.parse(lfLegacy);
+        idbSet('cal_full_os', localFull);
+        localStorage.removeItem('cal_full_os');
+      }
+    }
   } catch(e) {}
 
   if(localFull && Object.keys(localFull).length > 0) {
@@ -2355,15 +2419,15 @@ function saveToLocalStorage() {
     localStorage.setItem('cal_notes', JSON.stringify(notes));
     localStorage.setItem('cal_acts', JSON.stringify(actEv));
   } catch(e) {}
-  // Guardar también el dataset COMPLETO de OS, para que sobreviva a recargar la página
-  try {
-    localStorage.setItem('cal_full_os', JSON.stringify(osIdx));
-  } catch(e) {
-    // Límite de espacio del navegador excedido (localStorage ~5-10MB) — las notas de arriba
-    // ya quedaron guardadas, pero el dataset completo no cabe. Avisar al usuario.
-    console.warn('No se pudo guardar el dataset completo en localStorage:', e);
-    toast('⚠️ Demasiadas OS para guardar en este navegador — al recargar la página se perderán. Sincroniza con Google Sheets o carga menos días a la vez.', 'err');
-  }
+  // Guardar también el dataset COMPLETO de OS en IndexedDB (no localStorage:
+  // su límite de ~5-10MB se queda corto con miles de OS + materiales), para
+  // que sobreviva a recargar la página sin depender de Google Sheets.
+  idbSet('cal_full_os', osIdx).then(function(ok){
+    if(!ok) {
+      console.warn('No se pudo guardar el dataset completo en IndexedDB');
+      toast('⚠️ No se pudo guardar el respaldo local completo en este navegador — sincroniza con Google Sheets para no perder cambios al recargar.', 'err');
+    }
+  });
   actualizarBadgeAsistente();
 }
 
@@ -2825,8 +2889,9 @@ function resetApp() {
   try {
     localStorage.removeItem('cal_notes');
     localStorage.removeItem('cal_acts');
-    localStorage.removeItem('cal_full_os');
+    localStorage.removeItem('cal_full_os'); // por si quedó un respaldo viejo pre-IndexedDB
   } catch(e){}
+  idbDelete('cal_full_os');
   document.getElementById('upload-screen').style.display='';
   document.getElementById('cal-screen').style.display='none';
   ['btn-crear','btn-export','btn-reset'].forEach(id=>document.getElementById(id).classList.add('btn-hidden'));
