@@ -2713,6 +2713,14 @@ function processExcelRows(rows, nombre) {
   toast(ok+' ordenes cargadas'+(skip?' ('+skip+' sin fecha)':''), 'ok');
   startSync();
 
+  // Diagnóstico automático: revisa duplicados/atrasos/patrones apenas se
+  // termina de cargar el archivo, sin esperar a que alguien entre manual
+  // a la pestaña Diagnóstico. Solo toca lo estrictamente necesario:
+  // fusiona en silencio los duplicados idénticos (mismo correo — puro
+  // artefacto de una clave repetida, sin ambigüedad), y avisa (sin tocar
+  // nada) cuando hay algo que sí requiere una decisión humana.
+  setTimeout(function(){ ejecutarDiagnosticoAutomatico(); }, 800);
+
   // Aviso: si el archivo trae fechas muy recientes y viene de Snowflake, puede
   // estar incompleto (retraso de sincronización ya detectado antes).
   if(maxFechaArchivo){
@@ -3576,6 +3584,9 @@ function toast(msg,type=''){
   t.textContent=msg;t.className='toast show'+(type?' '+type:'');
   setTimeout(()=>{t.className='toast';},3500);
 }
+// Alias: algunos flujos (import clásico de materiales) llamaban a una
+// función "showToast" que nunca existió — quedaba en error silencioso.
+function showToast(msg,type=''){ toast(msg,type); }
 
 // ═══════════ ASISTENTE DEL CALENDARIO (motor de reglas, sin IA externa) ═══════════
 let asstTab = 'preguntar';
@@ -3880,6 +3891,37 @@ function interpretarPregunta(texto){
 }
 
 // ── DIAGNÓSTICO (reglas: atrasadas + posibles duplicados) ──
+// ── Diagnóstico automático post-carga ───────────────────────────
+// Se ejecuta solo después de subir un archivo (principal o del agente).
+// Corrige en silencio SOLO lo que es un artefacto sin ambigüedad (mismo
+// correo repetido por la clave vieja); todo lo que requiere criterio
+// humano (aliados en conflicto, atrasos, sobrecarga, patrones de
+// cancelación) se reporta, nunca se modifica solo.
+function ejecutarDiagnosticoAutomatico(){
+  const diag = ejecutarDiagnostico();
+  var fusionadas = 0;
+  diag.duplicadosExactos.forEach(function(grupo){
+    fusionarGrupoDuplicado(grupo);
+    fusionadas++;
+  });
+  if(fusionadas>0){
+    saveToLocalStorage();
+    applyFilters();
+    pushFullDatasetToGAS();
+  }
+
+  var avisos = [];
+  if(fusionadas>0) avisos.push(fusionadas+' tarjeta(s) duplicada(s) idéntica fusionada(s) automáticamente');
+  if(diag.duplicadas.length>0) avisos.push(diag.duplicadas.length+' orden(es) con aliados en conflicto — revisa "Diagnóstico" para decidir cuál es correcto');
+  if(diag.atrasadas.length>0) avisos.push(diag.atrasadas.length+' OS pendiente(s) atrasada(s)');
+  if(diag.sobrecarga.length>0) avisos.push(diag.sobrecarga.length+' técnico(s)/día con posible sobrecarga');
+  if(diag.patrones.length>0) avisos.push(diag.patrones.length+' patrón(es) de cancelaciones repetidas');
+
+  if(avisos.length>0){
+    toast('🔍 Diagnóstico: '+avisos.join(' · '), fusionadas>0||diag.duplicadas.length>0?'err':'ok');
+  }
+}
+
 function ejecutarDiagnostico(){
   const hoy = new Date(); hoy.setHours(0,0,0,0);
   const atrasadas=[]; const porDireccion={}; const porTecnicoDia={}; const porAliadoTipo={};
@@ -4522,6 +4564,7 @@ function ejecutarActualizacionMaterial(){
     applyFilters();
     if(selDate) renderPaneContent();
     pushFullDatasetToGAS();
+    setTimeout(function(){ ejecutarDiagnosticoAutomatico(); }, 800);
   }
 
   const resultEl = document.getElementById('asst-material-result');
@@ -4928,6 +4971,7 @@ function importMatExcel(file) {
       applyFilters();
       if(selDate) renderOSList(selDate);
       pushFullDatasetToGAS();
+      setTimeout(function(){ ejecutarDiagnosticoAutomatico(); }, 800);
 
       showToast('✅ Importado: '+updMat+' materiales, '+updNota+' notas, '+updEst+' estados'+
         (notFound?' · ⚠️ '+notFound+' sin OS':'')+(ignorados?' · '+ignorados+' estado(s) de material no reconocidos':''));
