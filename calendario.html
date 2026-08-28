@@ -2562,6 +2562,16 @@ function processExcelRows(rows, nombre) {
     return max ? v.substring(0, max) : v;
   }
 
+  // Textos que en la práctica significan "sin dirección registrada" — si se
+  // toman como direcciones reales, una fila con dirección real y otra con
+  // uno de estos textos para la MISMA orden se ven como "direcciones
+  // distintas" y se parte la orden en 2 tarjetas por error.
+  var DIRECCIONES_INVALIDAS = ['no registra','sin registro','no aplica','n/a','na','sin direccion','sin datos','-','.'];
+  function direccionEsValida(dir) {
+    if (!dir) return false;
+    return DIRECCIONES_INVALIDAS.indexOf(nrm(dir)) === -1;
+  }
+
   function construirLineaMaterial(row) {
     if(!tieneColumnasMaterial) return null;
     var nombre = getVal(row, COL.matNombre, 60);
@@ -2594,6 +2604,24 @@ function processExcelRows(rows, nombre) {
   depColorMap={}; depColorIdx=0;
   var ok=0, skip=0, maxFechaArchivo='';
 
+  // Pasada previa: cuántas direcciones VÁLIDAS distintas trae cada orden en
+  // este archivo. Sirve para decidir qué hacer con filas sin dirección
+  // usable (vacías o con textos como "No registra"): si la orden solo tiene
+  // 0 o 1 dirección real conocida, son el mismo punto de servicio y se
+  // fusionan ahí; si tiene 2+ (edificio con varios apartamentos), no se
+  // puede saber a cuál pertenece una fila sin dirección, así que esa fila
+  // no se fusiona a ciegas con ninguna.
+  var oidDirecciones = {};
+  rows.forEach(function(row){
+    var oidTmp = getVal(row, COL.oid);
+    if(!oidTmp) return;
+    var dirTmp = getVal(row, COL.dir, 80);
+    if(!direccionEsValida(dirTmp)) return;
+    if(!oidDirecciones[oidTmp]) oidDirecciones[oidTmp] = {};
+    var dirNorm = nrm(dirTmp);
+    if(!(dirNorm in oidDirecciones[oidTmp])) oidDirecciones[oidTmp][dirNorm] = dirTmp;
+  });
+
   rows.forEach(function(row, rowIdx){
     var rawF = getVal(row, COL.fecha);
     var fecha = parseFecha(rawF);
@@ -2606,17 +2634,38 @@ function processExcelRows(rows, nombre) {
     // a partir de la dirección, para no colapsar órdenes con varios
     // apartamentos/medidores (mismo ID ORDEN, distinta DIRECCIÓN) en una sola fila.
     var dirVal = getVal(row, COL.dir, 80);
+    var dirValida = direccionEsValida(dirVal);
     var emailVal = getVal(row, COL.email, 60);
     var opVal = getVal(row, COL.op, 60);
-    // Punto de servicio = orden + dirección. Si hay dirección, ES la clave —
-    // no se mezcla con el correo/técnico, porque una misma orden+dirección
-    // reasignada varias veces (igual que en Snowflake: hasta 9 operadores
-    // distintos para el mismo punto real) debe quedar en UNA sola tarjeta,
-    // no una por cada reasignación histórica. Solo si no hay dirección
-    // (verdaderamente imposible de identificar el punto de servicio) se cae
-    // a correo/técnico/índice de fila para no fusionar puntos distintos a ciegas.
-    var distintivo = emailVal ? emailVal.toLowerCase() : (opVal ? nrm(opVal) : 'r'+rowIdx);
-    var aid = getVal(row, COL.aid) || (dirVal ? (oid+'|'+dirVal) : (oid+'|sindir|'+distintivo));
+    // Punto de servicio = orden + dirección. Si hay dirección VÁLIDA, ES la
+    // clave — no se mezcla con el correo/técnico, porque una misma orden+
+    // dirección reasignada varias veces (igual que en Snowflake: hasta 9
+    // operadores distintos para el mismo punto real) debe quedar en UNA sola
+    // tarjeta. Si la dirección es un texto de "sin dato" (No registra, Sin
+    // registro, N/A, etc.) en lugar de vacía, se trata igual que si no
+    // hubiera dirección — si no, una fila con dirección real y otra con
+    // "No registra" para la misma orden se ven como direcciones distintas y
+    // se parte la orden en 2 tarjetas por error. Sin dirección utilizable,
+    // se agrupa por ID de orden — y si esa orden tiene exactamente UNA
+    // dirección real conocida en el archivo, esta fila se une a esa misma
+    // tarjeta (lo más común: un dato faltante, no un apartamento nuevo).
+    // Solo si la orden tiene 2+ direcciones reales distintas (edificio con
+    // varios apartamentos) se usa un identificador aparte, para no
+    // adivinar a cuál apartamento pertenece.
+    var direccionesConocidas = oidDirecciones[oid] ? Object.keys(oidDirecciones[oid]) : [];
+    var aid;
+    if (getVal(row, COL.aid)) {
+      aid = getVal(row, COL.aid);
+    } else if (dirValida) {
+      aid = oid+'|'+dirVal;
+    } else if (direccionesConocidas.length <= 1) {
+      aid = direccionesConocidas.length === 1
+        ? oid+'|'+oidDirecciones[oid][direccionesConocidas[0]]
+        : oid;
+    } else {
+      var distintivo = emailVal ? emailVal.toLowerCase() : (opVal ? nrm(opVal) : 'r'+rowIdx);
+      aid = oid+'|sindir|'+distintivo;
+    }
     var key = oid+'|'+aid;
     var em  = getVal(row, COL.email);
     var stRaw = getVal(row, COL.status);
