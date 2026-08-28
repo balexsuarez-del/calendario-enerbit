@@ -2626,16 +2626,6 @@ function processExcelRows(rows, nombre) {
     return max ? v.substring(0, max) : v;
   }
 
-  // Textos que en la práctica significan "sin dirección registrada" — si se
-  // toman como direcciones reales, una fila con dirección real y otra con
-  // uno de estos textos para la MISMA orden se ven como "direcciones
-  // distintas" y se parte la orden en 2 tarjetas por error.
-  var DIRECCIONES_INVALIDAS = ['no registra','sin registro','no aplica','n/a','na','sin direccion','sin datos','-','.'];
-  function direccionEsValida(dir) {
-    if (!dir) return false;
-    return DIRECCIONES_INVALIDAS.indexOf(nrm(dir)) === -1;
-  }
-
   function construirLineaMaterial(row) {
     if(!tieneColumnasMaterial) return null;
     var nombre = getVal(row, COL.matNombre, 60);
@@ -4075,9 +4065,30 @@ function ejecutarDiagnosticoAutomatico(){
   }
 }
 
+// Textos que en la práctica significan "sin dirección registrada" (No
+// registra, Sin registro, N/A, etc.) — usado tanto al importar como en el
+// Diagnóstico, para que una fila con dirección real y otra con uno de
+// estos textos para la MISMA orden no se vean como "direcciones distintas".
+var DIRECCIONES_INVALIDAS = ['no registra','sin registro','no aplica','n/a','na','sin direccion','sin datos','-','.'];
+function direccionEsValida(dir) {
+  if (!dir) return false;
+  return DIRECCIONES_INVALIDAS.indexOf(nrm(dir)) === -1;
+}
+
 function ejecutarDiagnostico(){
   const hoy = new Date(); hoy.setHours(0,0,0,0);
   const atrasadas=[]; const porDireccion={}; const porTecnicoDia={}; const porAliadoTipo={};
+
+  // Direcciones reales conocidas por orden (en TODO lo cargado), para tratar
+  // "No registra"/"Sin registro"/etc. como "sin dirección" al agrupar, en
+  // vez de como si fuera una dirección distinta — mismo criterio que ya usa
+  // el importador para no partir una orden en 2 tarjetas por error.
+  var oidDireccionesDiag = {};
+  Object.values(osIdx).flat().forEach(function(ev){
+    if(!ev.oid || !direccionEsValida(ev.dir)) return;
+    if(!oidDireccionesDiag[ev.oid]) oidDireccionesDiag[ev.oid] = {};
+    oidDireccionesDiag[ev.oid][nrm(ev.dir)] = true;
+  });
 
   Object.entries(osIdx).forEach(function(entry){
     const fecha=entry[0];
@@ -4089,10 +4100,18 @@ function ejecutarDiagnostico(){
         const diasAtraso = Math.round((hoy-fd)/86400000);
         atrasadas.push({ev:ev, fecha:fecha, diasAtraso:diasAtraso});
       }
-      if(ev.dir){
-        const key = ev.oid+'|'+nrm(ev.dir);
-        if(!porDireccion[key]) porDireccion[key]=[];
-        porDireccion[key].push({ev:ev, fecha:fecha});
+      if(ev.oid){
+        var direccionesConocidas = oidDireccionesDiag[ev.oid] ? Object.keys(oidDireccionesDiag[ev.oid]) : [];
+        var claveDir = null;
+        if(direccionEsValida(ev.dir)) claveDir = nrm(ev.dir);
+        else if(direccionesConocidas.length <= 1) claveDir = direccionesConocidas[0] || '';
+        // Si hay 2+ direcciones reales distintas para esta orden y esta fila
+        // no trae una válida, no se sabe a cuál pertenece: no se agrupa (claveDir queda null).
+        if(claveDir !== null){
+          const key = ev.oid+'|'+claveDir;
+          if(!porDireccion[key]) porDireccion[key]=[];
+          porDireccion[key].push({ev:ev, fecha:fecha});
+        }
       }
       // Sobrecarga de técnico/cuadrilla por día
       const tecnico = ev.tec||ev.op||'';
