@@ -2405,6 +2405,10 @@ function inicializarCalendario() {
   setSyncUI('ok', flat.length + ' OS cargadas');
   startSync();
   actualizarBadgeAsistente();
+  // Diagnóstico automático también al ABRIR el calendario (no solo al subir
+  // un archivo) — así se detectan y limpian duplicados que ya existían de
+  // antes, sin depender de que alguien vuelva a cargar un Excel.
+  setTimeout(function(){ ejecutarDiagnosticoAutomatico(); }, 1500);
 }
 
 function saveToLocalStorage() {
