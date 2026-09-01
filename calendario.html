@@ -4217,11 +4217,26 @@ function elegirMejorEv(grupo){
 }
 function fusionarGrupoDuplicado(grupo){
   const mejor = elegirMejorEv(grupo);
+  var notasExtra = [];
   grupo.forEach(function(g){
     if(g.ev===mejor.ev) return;
+    // Antes de descartar esta copia, rescatar lo importante que la tarjeta
+    // ganadora no tenga — no basta con quedarse con "la mejor", si otra
+    // copia tenía una nota, un material marcado o un estado override que la
+    // ganadora no tiene, eso también se conserva.
+    if(g.ev.nt_m && g.ev.nt_m !== mejor.ev.nt_m) notasExtra.push(g.ev.nt_m);
+    if(!mejor.ev.mat && g.ev.mat) mejor.ev.mat = g.ev.mat;
+    if(!mejor.ev.em_m && g.ev.em_m) mejor.ev.em_m = g.ev.em_m;
+    if(g.ev.mts && g.ev.mts.length){
+      mejor.ev.mts = mejor.ev.mts || [];
+      g.ev.mts.forEach(function(m){ if(mejor.ev.mts.indexOf(m)===-1) mejor.ev.mts.push(m); });
+    }
     var arr = osIdx[g.fecha];
     if(arr) osIdx[g.fecha] = arr.filter(function(e){ return e!==g.ev; });
   });
+  if(notasExtra.length){
+    mejor.ev.nt_m = mejor.ev.nt_m ? [mejor.ev.nt_m].concat(notasExtra).join(' | ') : notasExtra.join(' | ');
+  }
 }
 
 // ── Resolver conflicto de aliado a mano (Diagnóstico) y APRENDER la decisión ──
