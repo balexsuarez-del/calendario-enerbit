@@ -4262,9 +4262,9 @@ async function elegirAliadoCorrectoAsst(idx, emailElegido){
   saveToLocalStorage();
   applyFilters();
   if(selDate) renderPaneContent();
-  await pushFullDatasetToGAS();
   toast('✅ Aliado corregido a "'+(correcto.al||correcto.em)+'" y aprendido para la próxima carga','ok');
   renderAsstDiagnostico();
+  pushFullDatasetToGAS();
 }
 
 async function fusionarUnGrupoAsst(idx, origen){
@@ -4275,14 +4275,16 @@ async function fusionarUnGrupoAsst(idx, origen){
   applyFilters();
   if(selDate) renderPaneContent();
   saveToLocalStorage();
-  await pushFullDatasetToGAS();
   toast('Grupo fusionado ✓','ok');
+  // Actualizar la vista YA, sin esperar a que termine de sincronizar con
+  // Sheets (si eso tarda o falla, la lista no debe quedarse congelada).
   if(origen==='preguntar'){
     const answerEl=document.getElementById('asst-answer');
     if(answerEl) answerEl.innerHTML = renderDuplicadosHTML();
   } else {
     renderAsstDiagnostico();
   }
+  pushFullDatasetToGAS();
 }
 async function limpiarDuplicadosExactosAsst(origen){
   const diag = ejecutarDiagnostico();
@@ -4294,15 +4296,16 @@ async function limpiarDuplicadosExactosAsst(origen){
   applyFilters();
   if(selDate) renderPaneContent();
   saveToLocalStorage();
-  toast('Limpiando y sincronizando…','ok');
-  const ok = await pushFullDatasetToGAS();
-  toast(ok?'Duplicados limpiados y sincronizados ✓':'Duplicados limpiados (local; GAS offline)', ok?'ok':'err');
+  toast('Duplicados limpiados ✓ (sincronizando con Sheets en segundo plano…)','ok');
   if(origen==='preguntar'){
     const answerEl=document.getElementById('asst-answer');
     if(answerEl) answerEl.innerHTML = renderDuplicadosHTML();
   } else {
     renderAsstDiagnostico();
   }
+  pushFullDatasetToGAS().then(function(ok){
+    if(!ok) toast('⚠️ No se pudo sincronizar con Sheets — la limpieza quedó guardada localmente, reintenta más tarde','err');
+  });
 }
 
 // Vista de duplicados reutilizable desde la pestaña "Preguntar"
