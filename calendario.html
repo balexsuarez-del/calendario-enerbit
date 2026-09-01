@@ -4136,16 +4136,29 @@ function ejecutarDiagnostico(){
   const duplicadosExactos=[];
   Object.values(porDireccion).forEach(function(grupo){
     if(grupo.length>1){
-      const correos = [...new Set(grupo.map(function(g){return (g.ev.em||'').toLowerCase();}))];
-      if(correos.length>1) duplicadas.push(grupo);
+      // Conflicto real = distinta EMPRESA aliada (ej. C3 Pronto Servicios vs
+      // enerBit). Si son dos técnicos distintos de la MISMA empresa (correos
+      // diferentes, mismo "al"), no es un conflicto que requiera decisión —
+      // es una reasignación normal dentro del mismo aliado.
+      const aliados = [...new Set(grupo.map(function(g){ return nrm(g.ev.al || g.ev.em || ''); }))];
+      if(aliados.length>1) duplicadas.push(grupo);
       else duplicadosExactos.push(grupo);
     }
   });
 
   const UMBRAL_SOBRECARGA = 8;
   const sobrecarga = Object.values(porTecnicoDia)
-    .filter(function(g){ return g.items.length > UMBRAL_SOBRECARGA; })
-    .sort(function(a,b){ return b.items.length-a.items.length; });
+    .map(function(g){
+      // Sobrecarga real = muchas ÓRDENES distintas en un día (sitios
+      // físicamente separados), no muchas OS — un edificio/conjunto grande
+      // es UNA sola orden con muchos apartamentos, y un técnico puede
+      // legítimamente tener cientos de esas en un solo día sin que sea
+      // sobrecarga real.
+      g.ordenesDistintas = [...new Set(g.items.map(function(ev){ return ev.oid; }))].length;
+      return g;
+    })
+    .filter(function(g){ return g.ordenesDistintas > UMBRAL_SOBRECARGA; })
+    .sort(function(a,b){ return b.ordenesDistintas-a.ordenesDistintas; });
 
   const UMBRAL_PATRON = 3;
   const patrones = Object.values(porAliadoTipo)
@@ -4380,13 +4393,13 @@ function renderAsstDiagnostico(){
 
   html += '<div class="asst-section-title">👷 Técnico/cuadrilla con posible sobrecarga ('+sobrecarga.length+')</div>';
   if(!sobrecarga.length){
-    html += '<div class="asst-empty">Ninguna sobrecarga detectada (más de 8 OS el mismo día)</div>';
+    html += '<div class="asst-empty">Ninguna sobrecarga detectada (más de 8 órdenes distintas el mismo día)</div>';
   } else {
     sobrecarga.slice(0,15).forEach(function(g){
       const nota = notaSobrecarga(g).replace(/'/g,"\\'");
       html += '<div class="asst-finding">'+
         '<div onclick="irYResaltarOS(\''+g.items[0].oid+'\',\''+encodeURIComponent(g.items[0].aid)+'\',\''+g.fecha+'\')" style="cursor:pointer">'+
-        '<span class="sev-alta">'+g.items.length+' OS</span> — '+g.tecnico+' · '+g.fecha+'</div>'+
+        '<span class="sev-alta">'+g.ordenesDistintas+' órdenes</span> ('+g.items.length+' OS) — '+g.tecnico+' · '+g.fecha+'</div>'+
         '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();copiarNotaAsst(this,\''+nota+'\')">📋 Copiar nota</button>'+
       '</div>';
     });
