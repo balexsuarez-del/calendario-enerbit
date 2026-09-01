@@ -4159,6 +4159,20 @@ function ejecutarDiagnostico(){
       // legítimamente tener cientos de esas en un solo día sin que sea
       // sobrecarga real.
       g.ordenesDistintas = [...new Set(g.items.map(function(ev){ return ev.oid; }))].length;
+      // Verificación extra: si varias de esas "órdenes distintas" comparten
+      // exactamente la misma dirección, probablemente NO son órdenes
+      // distintas de verdad — son la MISMA orden real duplicada bajo IDs
+      // diferentes (un problema del sistema de origen, no del calendario).
+      var porDirTec = {};
+      g.items.forEach(function(ev){
+        var d = nrm(ev.dir||'');
+        if(!d) return;
+        if(!porDirTec[d]) porDirTec[d] = new Set();
+        porDirTec[d].add(ev.oid);
+      });
+      g.direccionesConIdsSospechosos = Object.entries(porDirTec)
+        .filter(function(e){ return e[1].size>1; })
+        .map(function(e){ return {dir:e[0], idsDistintos:e[1].size}; });
       return g;
     })
     .filter(function(g){ return g.ordenesDistintas > UMBRAL_SOBRECARGA; })
@@ -4419,9 +4433,14 @@ function renderAsstDiagnostico(){
   } else {
     sobrecarga.slice(0,15).forEach(function(g){
       const nota = notaSobrecarga(g).replace(/'/g,"\\'");
+      var alertaDup = '';
+      if(g.direccionesConIdsSospechosos && g.direccionesConIdsSospechosos.length){
+        var totalSospechosas = g.direccionesConIdsSospechosos.reduce(function(s,d){return s+d.idsDistintos;},0);
+        alertaDup = '<div style="color:var(--rd);font-size:.72rem;margin-top:2px">⚠️ '+totalSospechosas+' de esas órdenes comparten dirección con otra — probablemente son la MISMA orden real con ID distinto, no trabajo disperso genuino</div>';
+      }
       html += '<div class="asst-finding">'+
         '<div onclick="irYResaltarOS(\''+g.items[0].oid+'\',\''+encodeURIComponent(g.items[0].aid)+'\',\''+g.fecha+'\')" style="cursor:pointer">'+
-        '<span class="sev-alta">'+g.ordenesDistintas+' órdenes</span> ('+g.items.length+' OS) — '+g.tecnico+' · '+g.fecha+'</div>'+
+        '<span class="sev-alta">'+g.ordenesDistintas+' órdenes</span> ('+g.items.length+' OS) — '+g.tecnico+' · '+g.fecha+alertaDup+'</div>'+
         '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();copiarNotaAsst(this,\''+nota+'\')">📋 Copiar nota</button>'+
       '</div>';
     });
