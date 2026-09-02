@@ -2415,7 +2415,7 @@ function inicializarCalendario() {
   // Diagnóstico automático también al ABRIR el calendario (no solo al subir
   // un archivo) — así se detectan y limpian duplicados que ya existían de
   // antes, sin depender de que alguien vuelva a cargar un Excel.
-  setTimeout(function(){ ejecutarDiagnosticoAutomatico(); }, 1500);
+  setTimeout(function(){ ejecutarDiagnosticoAutomatico(); }, 100);
 }
 
 function saveToLocalStorage() {
@@ -2861,7 +2861,7 @@ function processExcelRows(rows, nombre) {
   // fusiona en silencio los duplicados idénticos (mismo correo — puro
   // artefacto de una clave repetida, sin ambigüedad), y avisa (sin tocar
   // nada) cuando hay algo que sí requiere una decisión humana.
-  setTimeout(function(){ ejecutarDiagnosticoAutomatico(); }, 800);
+  setTimeout(function(){ ejecutarDiagnosticoAutomatico(); }, 100);
 
   // Aviso: si el archivo trae fechas muy recientes y viene de Snowflake, puede
   // estar incompleto (retraso de sincronización ya detectado antes).
@@ -4359,6 +4359,54 @@ async function fusionarUnGrupoAsst(idx, origen){
   }
   pushFullDatasetToGAS();
 }
+async function limpiarTodoAsst(){
+  const diag = ejecutarDiagnostico();
+
+  // Contar de antemano (sin mutar nada todavía) para el mensaje de confirmación.
+  const nExactos = diag.duplicadosExactos.length;
+  const nIdDistinto = diag.duplicadosIdDistinto.length;
+  var nConflictosConAprendizaje = 0, nConflictosSinAprendizaje = 0;
+  diag.duplicadas.forEach(function(grupo){
+    var primero = grupo[0].ev;
+    var clave = _claveAliadoAprendido(primero.oid, primero.dir);
+    if(correccionesAprendidas.aliados[clave]) nConflictosConAprendizaje++;
+    else nConflictosSinAprendizaje++;
+  });
+  const total = nExactos + nIdDistinto + nConflictosConAprendizaje;
+
+  if(total===0){
+    toast(nConflictosSinAprendizaje>0
+      ? 'No hay nada seguro para fusionar automáticamente — quedan '+nConflictosSinAprendizaje+' conflicto(s) de aliado que necesitan tu decisión manual'
+      : 'No encontré nada para limpiar 🎉', 'ok');
+    return;
+  }
+  if(!confirm('Se van a fusionar '+total+' grupo(s) de tarjetas duplicadas:\n'+
+    '• '+nExactos+' duplicados exactos (mismo aliado)\n'+
+    '• '+nIdDistinto+' con ID de orden distinto (misma dirección/fecha/tipo)\n'+
+    '• '+nConflictosConAprendizaje+' conflictos de aliado ya resueltos antes (se aplica lo aprendido)\n'+
+    (nConflictosSinAprendizaje>0 ? '\n'+nConflictosSinAprendizaje+' conflicto(s) SIN decisión previa quedan pendientes para revisar a mano.\n' : '')+
+    '\nEsto afecta a todos los colaboradores y no se puede deshacer. ¿Continuar?')) return;
+
+  diag.duplicadosExactos.forEach(function(grupo){ fusionarGrupoDuplicado(grupo); });
+  diag.duplicadosIdDistinto.forEach(function(grupo){ fusionarGrupoDuplicado(grupo); });
+  diag.duplicadas.forEach(function(grupo){
+    var primero = grupo[0].ev;
+    var clave = _claveAliadoAprendido(primero.oid, primero.dir);
+    var aprendido = correccionesAprendidas.aliados[clave];
+    if(aprendido){
+      grupo.forEach(function(g){ Object.assign(g.ev, aprendido); });
+      fusionarGrupoDuplicado(grupo);
+    }
+  });
+
+  applyFilters();
+  if(selDate) renderPaneContent();
+  saveToLocalStorage();
+  toast('✅ '+total+' grupo(s) fusionado(s)'+(nConflictosSinAprendizaje>0?' · '+nConflictosSinAprendizaje+' conflicto(s) quedan para revisar a mano':''),'ok');
+  renderAsstDiagnostico();
+  pushFullDatasetToGAS();
+}
+
 async function limpiarDuplicadosExactosAsst(origen){
   const diag = ejecutarDiagnostico();
   if(!diag.duplicadosExactos.length){ toast('No hay duplicados exactos para limpiar','ok'); return; }
@@ -4425,6 +4473,8 @@ function renderAsstDiagnostico(){
   const diag = ejecutarDiagnostico();
   const atrasadas=diag.atrasadas, duplicadas=diag.duplicadas, duplicadosExactos=diag.duplicadosExactos, duplicadosIdDistinto=diag.duplicadosIdDistinto, sobrecarga=diag.sobrecarga, patrones=diag.patrones;
   let html='';
+
+  html += '<div style="margin-bottom:10px"><button class="btn btn-primary" style="width:100%" onclick="limpiarTodoAsst()">🧹⚡ Limpiar TODO lo seguro de una vez</button></div>';
 
   html += '<div class="asst-section-title">⏳ OS pendientes atrasadas ('+atrasadas.length+')</div>';
   if(!atrasadas.length){
@@ -4903,7 +4953,7 @@ function ejecutarActualizacionMaterial(){
     applyFilters();
     if(selDate) renderPaneContent();
     pushFullDatasetToGAS();
-    setTimeout(function(){ ejecutarDiagnosticoAutomatico(); }, 800);
+    setTimeout(function(){ ejecutarDiagnosticoAutomatico(); }, 100);
   }
 
   const resultEl = document.getElementById('asst-material-result');
@@ -5327,7 +5377,7 @@ function importMatExcel(file) {
       applyFilters();
       if(selDate) renderOSList(selDate);
       pushFullDatasetToGAS();
-      setTimeout(function(){ ejecutarDiagnosticoAutomatico(); }, 800);
+      setTimeout(function(){ ejecutarDiagnosticoAutomatico(); }, 100);
 
       showToast('✅ Importado: '+updMat+' materiales, '+updNota+' notas, '+updEst+' estados'+
         (notFound?' · ⚠️ '+notFound+' sin OS':'')+(ignorados?' · '+ignorados+' estado(s) de material no reconocidos':''));
