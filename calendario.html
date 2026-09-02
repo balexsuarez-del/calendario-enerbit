@@ -4251,26 +4251,49 @@ function interpretarPregunta(texto){
 function ejecutarDiagnosticoAutomatico(){
   try {
     const diag = ejecutarDiagnostico();
-    var fusionadas = 0;
+    var fusionadas = 0, conflictosResueltos = 0, conflictosPendientes = 0;
+
     diag.duplicadosExactos.forEach(function(grupo){
       fusionarGrupoDuplicado(grupo);
       fusionadas++;
     });
-    if(fusionadas>0){
+    diag.duplicadosIdDistinto.forEach(function(grupo){
+      fusionarGrupoDuplicado(grupo);
+      fusionadas++;
+    });
+    // Conflictos de aliado: ya validado que la enorme mayoría son el mismo
+    // aliado con distinto usuario/correo (o uno de los lados simplemente
+    // sin correo capturado) — no un conflicto real entre 2 empresas. Se
+    // resuelven solos con el mismo criterio que "Limpiar TODO", sin esperar
+    // a que alguien le dé clic; solo quedan pendientes los genuinamente
+    // ambiguos (2+ aliados con nombre propio compitiendo).
+    diag.duplicadas.forEach(function(grupo){
+      var resuelto = _resolverConflictoAutomatico(grupo);
+      if(resuelto){
+        grupo.forEach(function(g){ Object.assign(g.ev, resuelto); });
+        fusionarGrupoDuplicado(grupo);
+        conflictosResueltos++;
+      } else {
+        conflictosPendientes++;
+      }
+    });
+
+    if(fusionadas>0 || conflictosResueltos>0){
       saveToLocalStorage();
       applyFilters();
       pushFullDatasetToGAS();
     }
 
     var avisos = [];
-    if(fusionadas>0) avisos.push(fusionadas+' tarjeta(s) duplicada(s) idéntica fusionada(s) automáticamente');
-    if(diag.duplicadas.length>0) avisos.push(diag.duplicadas.length+' orden(es) con aliados en conflicto — revisa "Diagnóstico" para decidir cuál es correcto');
+    if(fusionadas>0) avisos.push(fusionadas+' tarjeta(s) duplicada(s) fusionada(s) automáticamente');
+    if(conflictosResueltos>0) avisos.push(conflictosResueltos+' conflicto(s) de aliado resuelto(s) solo(s)');
+    if(conflictosPendientes>0) avisos.push(conflictosPendientes+' conflicto(s) de aliado genuinamente ambiguo(s) — revisa "Diagnóstico"');
     if(diag.atrasadas.length>0) avisos.push(diag.atrasadas.length+' OS pendiente(s) atrasada(s)');
     if(diag.sobrecarga.length>0) avisos.push(diag.sobrecarga.length+' técnico(s)/día con posible sobrecarga');
     if(diag.patrones.length>0) avisos.push(diag.patrones.length+' patrón(es) de cancelaciones repetidas');
 
     if(avisos.length>0){
-      toast('🔍 Diagnóstico: '+avisos.join(' · '), fusionadas>0||diag.duplicadas.length>0?'err':'ok');
+      toast('🔍 Diagnóstico: '+avisos.join(' · '), (fusionadas>0||conflictosResueltos>0||conflictosPendientes>0)?'err':'ok');
     }
   } catch(err) {
     console.error('Error en ejecutarDiagnosticoAutomatico:', err);
