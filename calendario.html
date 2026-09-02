@@ -2422,8 +2422,17 @@ function inicializarCalendario() {
   flat.forEach(function(ev){ if(ev.sta) depColor(ev.sta); });
   allDeps = [...new Set(flat.map(function(e){return e.sta;}).filter(Boolean))].sort();
   allCits = [...new Set(flat.map(function(e){return e.ci;}).filter(Boolean))].sort();
-  var firstDate = Object.keys(osIdx).sort()[0];
-  if(firstDate){var p=firstDate.split('-').map(Number);curY=p[0];curM=p[1]-1;}
+  // Abrir en el mes de HOY si hay algo cargado ese mes o cerca; si no, caer
+  // al mes con la fecha más antigua cargada (comportamiento anterior).
+  var hoy = new Date();
+  var hoyKey = dateKey(hoy);
+  var fechasCargadas = Object.keys(osIdx).sort();
+  if(fechasCargadas.some(function(f){ return f.slice(0,7)===hoyKey.slice(0,7); })){
+    curY = hoy.getFullYear(); curM = hoy.getMonth();
+  } else {
+    var firstDate = fechasCargadas[0];
+    if(firstDate){var p=firstDate.split('-').map(Number);curY=p[0];curM=p[1]-1;}
+  }
   showCalScreen();
   buildFilters();
   applyFilters();
