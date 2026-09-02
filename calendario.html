@@ -4063,27 +4063,32 @@ function interpretarPregunta(texto){
 // humano (aliados en conflicto, atrasos, sobrecarga, patrones de
 // cancelación) se reporta, nunca se modifica solo.
 function ejecutarDiagnosticoAutomatico(){
-  const diag = ejecutarDiagnostico();
-  var fusionadas = 0;
-  diag.duplicadosExactos.forEach(function(grupo){
-    fusionarGrupoDuplicado(grupo);
-    fusionadas++;
-  });
-  if(fusionadas>0){
-    saveToLocalStorage();
-    applyFilters();
-    pushFullDatasetToGAS();
-  }
+  try {
+    const diag = ejecutarDiagnostico();
+    var fusionadas = 0;
+    diag.duplicadosExactos.forEach(function(grupo){
+      fusionarGrupoDuplicado(grupo);
+      fusionadas++;
+    });
+    if(fusionadas>0){
+      saveToLocalStorage();
+      applyFilters();
+      pushFullDatasetToGAS();
+    }
 
-  var avisos = [];
-  if(fusionadas>0) avisos.push(fusionadas+' tarjeta(s) duplicada(s) idéntica fusionada(s) automáticamente');
-  if(diag.duplicadas.length>0) avisos.push(diag.duplicadas.length+' orden(es) con aliados en conflicto — revisa "Diagnóstico" para decidir cuál es correcto');
-  if(diag.atrasadas.length>0) avisos.push(diag.atrasadas.length+' OS pendiente(s) atrasada(s)');
-  if(diag.sobrecarga.length>0) avisos.push(diag.sobrecarga.length+' técnico(s)/día con posible sobrecarga');
-  if(diag.patrones.length>0) avisos.push(diag.patrones.length+' patrón(es) de cancelaciones repetidas');
+    var avisos = [];
+    if(fusionadas>0) avisos.push(fusionadas+' tarjeta(s) duplicada(s) idéntica fusionada(s) automáticamente');
+    if(diag.duplicadas.length>0) avisos.push(diag.duplicadas.length+' orden(es) con aliados en conflicto — revisa "Diagnóstico" para decidir cuál es correcto');
+    if(diag.atrasadas.length>0) avisos.push(diag.atrasadas.length+' OS pendiente(s) atrasada(s)');
+    if(diag.sobrecarga.length>0) avisos.push(diag.sobrecarga.length+' técnico(s)/día con posible sobrecarga');
+    if(diag.patrones.length>0) avisos.push(diag.patrones.length+' patrón(es) de cancelaciones repetidas');
 
-  if(avisos.length>0){
-    toast('🔍 Diagnóstico: '+avisos.join(' · '), fusionadas>0||diag.duplicadas.length>0?'err':'ok');
+    if(avisos.length>0){
+      toast('🔍 Diagnóstico: '+avisos.join(' · '), fusionadas>0||diag.duplicadas.length>0?'err':'ok');
+    }
+  } catch(err) {
+    console.error('Error en ejecutarDiagnosticoAutomatico:', err);
+    toast('⚠️ El diagnóstico automático falló: '+err.message+' (revisa la consola F12 para el detalle)', 'err');
   }
 }
 
