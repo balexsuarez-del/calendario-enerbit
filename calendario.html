@@ -2604,6 +2604,7 @@ function processExcelRows(rows, nombre) {
     obs:    findCol(['OBSERVATIONS_CERTIFICATES','IRREGULARIDADES','observations','IRREGULARIDAD']),
     cr:     findCol(['CANCEL_REASSON','MOTIVO DE CANCELACIÓN','CANCEL_REASON','motivo_cancel','MOTIVO']),
     co:     findCol(['CANCEL_OBSERVATIONS','OBSERVACIÓN DE CANCELACIÓN','cancel_obs','obs_cancel']),
+    fechaCancel: findCol(['FECHA Y HORA DE CANCELACIÓN','CANCELLED_AT','fecha_cancelacion','fecha_cancelación']),
     tec:    findCol(['TECNICOS_ASIGNADOS','TECNICO ASIGNADO','tecnicos','TECNICO','tec']),
     medidor:findCol(['METER_SERIAL_INSTALLED','MEDIDOR INSTALADO','MEDIDOR','medidor','METER_SERIAL']),
     matNombre:  findCol(['MATERIAL_NOMBRE','MATERIAL NAME','NOMBRE MATERIAL','material_name','nombre_material']),
@@ -2760,6 +2761,7 @@ function processExcelRows(rows, nombre) {
       des: getVal(row, COL.des, 200),
       obs: getVal(row, COL.obs, 200),
       cr:  getVal(row, COL.cr, 80),
+      fechaCancel: getVal(row, COL.fechaCancel, 30),
       co:  getVal(row, COL.co, 140),
       ti:  parseTime(rawF),
       nt_m:prev.nt_m||'', mat:prev.mat||'',
@@ -4289,6 +4291,18 @@ function fusionarGrupoDuplicado(grupo){
     if(g.ev.mts && g.ev.mts.length){
       mejor.ev.mts = mejor.ev.mts || [];
       g.ev.mts.forEach(function(m){ if(mejor.ev.mts.indexOf(m)===-1) mejor.ev.mts.push(m); });
+    }
+    // Si se descarta una orden COMPLETA con un ID distinto (no una copia de
+    // la misma orden), se deja constancia en la nota: cuál ID se descartó,
+    // en qué estado estaba, el motivo, cuándo, y quién la tenía asignada —
+    // para no perder el rastro de esa orden más antigua/atrasada.
+    if(g.ev.oid !== mejor.ev.oid){
+      var idCorto = (g.ev.oid||'').slice(-8);
+      var estadoTxt = (ST[g.ev.st] ? ST[g.ev.st].label : g.ev.st) || 'sin estado';
+      var quien = g.ev.op || g.ev.tec || g.ev.al || 'sin dato';
+      var cuando = g.ev.fechaCancel || (g.ev.fecha||'') + (g.ev.ti ? ' '+g.ev.ti : '');
+      var motivo = g.ev.cr || g.ev.co || 'sin motivo registrado';
+      notasExtra.push('🗂️ OS …'+idCorto+' ('+estadoTxt+') descartada por duplicado — motivo: '+motivo+' — '+cuando+' — '+quien);
     }
     var arr = osIdx[g.fecha];
     if(arr) osIdx[g.fecha] = arr.filter(function(e){ return e!==g.ev; });
