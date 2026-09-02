@@ -1226,24 +1226,32 @@ function gasGet(params) {
     Object.entries(params).forEach(([k,v]) => url.searchParams.set(k, v));
     url.searchParams.set('callback', cb);
     window[cb] = function(data) {
-      delete window[cb];
+      window[cb] = function(){}; // por si el navegador reintenta el mismo script
       script.remove();
       resolve(data);
     };
     script.onerror = () => {
-      delete window[cb];
+      window[cb] = function(){};
       script.remove();
       reject(new Error('GAS no responde'));
     };
     script.src = url.toString();
     document.head.appendChild(script);
+    // Con miles de OS en el Sheet, la respuesta puede tardar bastante más
+    // de 15s en generarse — con ese límite tan corto, la app declaraba
+    // "timeout" y borraba el callback, pero la respuesta real llegaba igual
+    // un poco después e intentaba llamar a una función que ya no existía
+    // (ReferenceError visible en consola). 60s da margen real para
+    // datasets grandes sin dejar de detectar una falla genuina; y si aun
+    // así llega tarde, se deja una función vacía en vez de borrarla del
+    // todo, para que esa respuesta tardía no explote en la consola.
     setTimeout(() => {
-      if(window[cb]) {
-        delete window[cb];
+      if(typeof window[cb] === 'function' && window[cb].toString() !== 'function(){}'){
+        window[cb] = function(){};
         script.remove();
         reject(new Error('Timeout GAS'));
       }
-    }, 15000);
+    }, 60000);
   });
 }
 
