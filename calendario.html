@@ -2779,23 +2779,63 @@ function processExcelRows(rows, nombre) {
 
     var lineaMaterial = construirLineaMaterial(row);
 
-    // Merge incremental (por orden + punto de servicio, no solo por orden)
+    // Merge incremental (por orden + punto de servicio, no solo por orden).
+    // Busca en TODO osIdx (cualquier fecha), no solo en la fecha de esta
+    // fila — necesario porque la orden puede haberse reprogramado Y además
+    // llegar con un esquema de identificador distinto (con/sin ASSIGNEE_ID)
+    // en la misma carga combinada. Antes esto se buscaba en dos pasos
+    // separados (fecha actual, luego "prevMap" por fecha vieja) y por eso
+    // un tercer archivo con datos de una fecha ya movida podía reintroducir
+    // un duplicado.
     if(!osIdx[fecha]) osIdx[fecha]=[];
-    var existIdx=osIdx[fecha].findIndex(function(e){return e.oid===oid&&e.aid===aid;});
-    if(existIdx<0 && direccionEsValida(dirVal)){
-      // Coincidencia exacta por (oid, aid) no encontrada. Antes de crear una
-      // tarjeta nueva, buscar por (oid, dirección) sin importar el aid: pasa
-      // cuando un archivo anterior no traía ASSIGNEE_ID (aid "hecho a mano"
-      // = oid+dirección) y este archivo sí lo trae (aid = ASSIGNEE_ID real),
-      // o viceversa — el mismo punto real quedaría duplicado si no se
-      // reconcilia aquí.
-      existIdx = osIdx[fecha].findIndex(function(e){
-        return e.oid===oid && direccionEsValida(e.dir) && nrm(e.dir)===nrm(dirVal);
+    var encontrado = null; // {ev, fecha}
+
+    // 1) Coincidencia exacta (oid, aid) — primero en la fecha de esta fila,
+    //    si no, en cualquier otra (vía prevMap, ya indexado por esa clave).
+    var idxMismaFecha = osIdx[fecha].findIndex(function(e){return e.oid===oid&&e.aid===aid;});
+    if(idxMismaFecha>=0) encontrado = {ev: osIdx[fecha][idxMismaFecha], fecha: fecha};
+    if(!encontrado && prevMap[key]) encontrado = {ev: prevMap[key].ev, fecha: prevMap[key].fecha};
+
+    // 2) Coincidencia por (oid, dirección normalizada exacta) en CUALQUIER
+    //    fecha, sin importar el aid — cubre cuando un archivo trae/no trae
+    //    ASSIGNEE_ID de forma distinta a como se cargó antes.
+    if(!encontrado && direccionEsValida(dirVal)){
+      var dN = nrm(dirVal);
+      Object.keys(osIdx).some(function(f){
+        var i = osIdx[f].findIndex(function(e){ return e.oid===oid && direccionEsValida(e.dir) && nrm(e.dir)===dN; });
+        if(i>=0){ encontrado = {ev: osIdx[f][i], fecha: f}; return true; }
+        return false;
       });
     }
-    if(existIdx>=0){
-      // Actualizar conservando anotaciones
-      var ex=osIdx[fecha][existIdx];
+
+    // 3) Coincidencia por dirección más/menos específica (una contiene a la
+    //    otra) en cualquier fecha — pasa entre distintas exportaciones del
+    //    mismo reporte para edificios grandes. Solo si hay UN ÚNICO
+    //    candidato así para esta orden en todo lo cargado; si hay varios
+    //    (apartamentos distintos de la misma orden), es ambiguo y se
+    //    descarta esta fila en silencio en vez de adivinar.
+    if(!encontrado && direccionEsValida(dirVal)){
+      var dN2 = nrm(dirVal);
+      var relacionados = [];
+      Object.keys(osIdx).forEach(function(f){
+        osIdx[f].forEach(function(e){
+          if(e.oid!==oid || !direccionEsValida(e.dir)) return;
+          var eN = nrm(e.dir);
+          if(eN!==dN2 && (eN.includes(dN2) || dN2.includes(eN))) relacionados.push({ev:e, fecha:f});
+        });
+      });
+      if(relacionados.length===1) encontrado = relacionados[0];
+      else if(relacionados.length>1) return; // ambiguo entre varios apartamentos: no adivinar
+    }
+
+    if(encontrado){
+      var ex = encontrado.ev;
+      // Si la dirección nueva es más específica (más larga) que la que ya
+      // había, se adopta — el detalle (ej. número de apartamento) no se
+      // pierde ni se sobreescribe por una versión más genérica después.
+      if(ex.dir && direccionEsValida(ex.dir) && ex.dir.length > (ev.dir||'').length){
+        ev.dir = ex.dir;
+      }
       ev.em_m=ex.em_m||ev.em_m;
       ev.nt_m=ex.nt_m||ev.nt_m;
       ev.mat=ex.mat||ev.mat;
@@ -2816,25 +2856,14 @@ function processExcelRows(rows, nombre) {
       if(exEsMejor){
         ev.st = ex.st; ev.em = ex.em; ev.al = ex.al; ev.op = ex.op; ev.tec = ex.tec;
       }
-      osIdx[fecha][existIdx]=ev;
+      // Sacar la copia vieja de donde estuviera (misma fecha o distinta) y
+      // dejar la actualizada en la fecha de esta fila.
+      osIdx[encontrado.fecha] = osIdx[encontrado.fecha].filter(function(e){ return e!==ex; });
+      if(!osIdx[encontrado.fecha].length) delete osIdx[encontrado.fecha];
+      if(!osIdx[fecha]) osIdx[fecha]=[];
+      osIdx[fecha].push(ev);
     } else {
-      // Este punto de servicio, ¿estaba en otra fecha? mover
-      var old=prevMap[key];
-      if(old && old.fecha!==fecha && osIdx[old.fecha]) {
-        osIdx[old.fecha]=osIdx[old.fecha].filter(function(e){return !(e.oid===oid&&e.aid===aid);});
-        if(!osIdx[old.fecha].length) delete osIdx[old.fecha];
-        ev.em_m=old.ev.em_m||ev.em_m;
-        ev.nt_m=old.ev.nt_m||ev.nt_m;
-        ev.mat=old.ev.mat||ev.mat;
-        ev.mts=old.ev.mts?old.ev.mts.slice():[];
-        var oldEraEnerbit = /@enerbit\.co$/i.test(old.ev.em||'');
-        var nuevaEsEnerbit2 = /@enerbit\.co$/i.test(ev.em||'');
-        if(!oldEraEnerbit && nuevaEsEnerbit2 && old.ev.em){
-          ev.em = old.ev.em; ev.al = old.ev.al; ev.op = old.ev.op; ev.tec = old.ev.tec;
-        }
-      } else {
-        ev.mts=[];
-      }
+      ev.mts=[];
       osIdx[fecha].push(ev);
     }
     if(lineaMaterial && ev.mts.indexOf(lineaMaterial)===-1) ev.mts.push(lineaMaterial);
