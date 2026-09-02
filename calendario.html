@@ -967,6 +967,16 @@ function depColor(dep){
   if(!depColorMap[dep]){depColorMap[dep]=DEP_COLORS[depColorIdx%DEP_COLORS.length];depColorIdx++;}
   return depColorMap[dep];
 }
+// Color por aliado (empresa contratista real: C3 Pronto Servicios, CGM
+// Support, MHEV, etc.) — independiente del color de departamento, para que
+// la tarjeta muestre visualmente CUÁL aliado es, no solo si lo gestiona
+// enerBit/KantiA/manual (esa es una categoría interna distinta, ver "emp").
+let aliColorMap={}, aliColorIdx=0;
+function aliColor(al){
+  if(!al) return DEP_COLORS[0];
+  if(!aliColorMap[al]){aliColorMap[al]=DEP_COLORS[aliColorIdx%DEP_COLORS.length];aliColorIdx++;}
+  return aliColorMap[al];
+}
 
 const ACT_COLORS=[
   {bg:'#EDE9FE',bar:'#7028AE'},{bg:'#FEF3C7',bar:'#F59E0B'},
@@ -3428,6 +3438,7 @@ function osCardHTML(ev, key) {
         '<span class="tag '+sc.tag+'">'+sc.icon+' '+sc.label+'</span>'+
         depTag+
         '<span class="tag '+(ei.badge||'')+'"'+(ei.sty?' style="'+ei.sty+'"':'')+'>'+ei.label+'</span>'+
+        (ev.al?(function(){var ac=aliColor(ev.al);return '<span class="tag" style="background:'+ac.bg+';color:'+ac.text+';border:1px solid '+ac.bar+'40">🤝 '+ev.al+'</span>';})():'')+
         (ev.mat?'<span class="tag" style="background:'+mat.bg+';color:'+mat.cl+'">'+mat.label+'</span>':'')+
       '</div>'+
       (ev.nt_m?'<div class="os-nota">📌 '+ev.nt_m+'</div>':'')+
