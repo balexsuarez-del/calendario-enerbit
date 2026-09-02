@@ -3383,7 +3383,7 @@ function osCardHTML(ev, key) {
       '</div>'+
       (ev.nt_m?'<div class="os-nota">📌 '+ev.nt_m+'</div>':'')+
       readBtns+
-      +(function(){ var oid2=ev.oid||ev.o; var mts2=ev.mts&&ev.mts.length?ev.mts:parseMaterialFromDesc((ev.des||ev.ob||ev.description||'').substring(0,500)); return mts2.length?renderMatHtml(oid2,mts2,ev.mat):''; }())+
+      (function(){ var oid2=ev.oid||ev.o; var mts2=ev.mts&&ev.mts.length?ev.mts:parseMaterialFromDesc((ev.des||ev.ob||ev.description||'').substring(0,500)); return mts2.length?renderMatHtml(oid2,mts2,ev.mat):''; }())+
       '<div class="edit-section">'+
         '<div class="edit-row"><label>Estado</label>'+
           '<select class="edit-select" id="est-'+ev.oid+'-'+ev.aid+'">'+estOpts+'</select>'+
