@@ -4097,8 +4097,9 @@ function ejecutarDiagnostico(){
   var oidDireccionesDiag = {};
   Object.values(osIdx).flat().forEach(function(ev){
     if(!ev.oid || !direccionEsValida(ev.dir)) return;
-    if(!oidDireccionesDiag[ev.oid]) oidDireccionesDiag[ev.oid] = {};
-    oidDireccionesDiag[ev.oid][nrm(ev.dir)] = true;
+    var oidN = nrm(ev.oid);
+    if(!oidDireccionesDiag[oidN]) oidDireccionesDiag[oidN] = {};
+    oidDireccionesDiag[oidN][nrm(ev.dir)] = true;
   });
 
   Object.entries(osIdx).forEach(function(entry){
@@ -4112,14 +4113,14 @@ function ejecutarDiagnostico(){
         atrasadas.push({ev:ev, fecha:fecha, diasAtraso:diasAtraso});
       }
       if(ev.oid){
-        var direccionesConocidas = oidDireccionesDiag[ev.oid] ? Object.keys(oidDireccionesDiag[ev.oid]) : [];
+        var direccionesConocidas = oidDireccionesDiag[nrm(ev.oid)] ? Object.keys(oidDireccionesDiag[nrm(ev.oid)]) : [];
         var claveDir = null;
         if(direccionEsValida(ev.dir)) claveDir = nrm(ev.dir);
         else if(direccionesConocidas.length <= 1) claveDir = direccionesConocidas[0] || '';
         // Si hay 2+ direcciones reales distintas para esta orden y esta fila
         // no trae una válida, no se sabe a cuál pertenece: no se agrupa (claveDir queda null).
         if(claveDir !== null){
-          const key = ev.oid+'|'+claveDir;
+          const key = nrm(ev.oid)+'|'+claveDir;
           if(!porDireccion[key]) porDireccion[key]=[];
           porDireccion[key].push({ev:ev, fecha:fecha});
         }
@@ -4174,7 +4175,7 @@ function ejecutarDiagnostico(){
   // sí se está por descartar una orden completa, no solo una copia repetida
   // de la misma.
   const duplicadosIdDistinto = Object.values(porSitioFecha).filter(function(grupo){
-    const idsDistintos = new Set(grupo.map(function(g){ return g.ev.oid; }));
+    const idsDistintos = new Set(grupo.map(function(g){ return nrm(g.ev.oid); }));
     return idsDistintos.size > 1;
   });
 
@@ -4186,7 +4187,7 @@ function ejecutarDiagnostico(){
       // es UNA sola orden con muchos apartamentos, y un técnico puede
       // legítimamente tener cientos de esas en un solo día sin que sea
       // sobrecarga real.
-      g.ordenesDistintas = [...new Set(g.items.map(function(ev){ return ev.oid; }))].length;
+      g.ordenesDistintas = [...new Set(g.items.map(function(ev){ return nrm(ev.oid); }))].length;
       // Verificación extra: si varias de esas "órdenes distintas" comparten
       // exactamente la misma dirección, probablemente NO son órdenes
       // distintas de verdad — son la MISMA orden real duplicada bajo IDs
@@ -4196,7 +4197,7 @@ function ejecutarDiagnostico(){
         var d = nrm(ev.dir||'');
         if(!d) return;
         if(!porDirTec[d]) porDirTec[d] = new Set();
-        porDirTec[d].add(ev.oid);
+        porDirTec[d].add(nrm(ev.oid));
       });
       g.direccionesConIdsSospechosos = Object.entries(porDirTec)
         .filter(function(e){ return e[1].size>1; })
