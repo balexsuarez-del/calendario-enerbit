@@ -2833,21 +2833,15 @@ function processExcelRows(rows, nombre) {
     // tarjeta (lo más común: un dato faltante, no un apartamento nuevo).
     // Solo si la orden tiene 2+ direcciones reales distintas (edificio con
     // varios apartamentos) se usa un identificador aparte, para no
-    // adivinar a cuál apartamento pertenece.
-    var direccionesConocidas = oidDirecciones[oid] ? Object.keys(oidDirecciones[oid]) : [];
-    var aid;
-    if (getVal(row, COL.aid)) {
-      aid = getVal(row, COL.aid);
-    } else if (dirValida) {
-      aid = oid+'|'+dirVal;
-    } else if (direccionesConocidas.length <= 1) {
-      aid = direccionesConocidas.length === 1
-        ? oid+'|'+oidDirecciones[oid][direccionesConocidas[0]]
-        : oid;
-    } else {
-      var distintivo = emailVal ? emailVal.toLowerCase() : (opVal ? nrm(opVal) : 'r'+rowIdx);
-      aid = oid+'|sindir|'+distintivo;
-    }
+    // El ID de la orden es la ÚNICA identidad de la tarjeta — igual que en
+    // Snowflake, es único e irrepetible. Que la misma orden tenga varios
+    // usuarios/técnicos del mismo aliado, o varios puntos/medidores (FRT,
+    // apartamentos), NO la convierte en órdenes distintas: es la MISMA
+    // tarea. Antes se subdividía por dirección/ASSIGNEE_ID para no mezclar
+    // apartamentos de un edificio, pero en la práctica esto generaba más
+    // ruido del que evitaba (tarjetas de más cuando dos reportes distintos
+    // describen la misma orden con esquemas de identificador diferentes).
+    var aid = '';
     var key = oid+'|'+aid;
     var em  = getVal(row, COL.email);
     var stRaw = getVal(row, COL.status);
@@ -2977,8 +2971,22 @@ function processExcelRows(rows, nombre) {
       // Si la dirección nueva es más específica (más larga) que la que ya
       // había, se adopta — el detalle (ej. número de apartamento) no se
       // pierde ni se sobreescribe por una versión más genérica después.
-      if(ex.dir && direccionEsValida(ex.dir) && ex.dir.length > (ev.dir||'').length){
-        ev.dir = ex.dir;
+      // Si son direcciones distintas (no una más detallada de la otra —
+      // ej. otro apartamento/FRT de la misma orden), la que no se usó como
+      // principal queda registrada en la nota para no perder el rastro.
+      if(ex.dir && direccionEsValida(ex.dir) && ex.dir !== ev.dir){
+        var exEsMasLarga = ex.dir.length > (ev.dir||'').length;
+        var direccionQueSeUsa = exEsMasLarga ? ex.dir : ev.dir;
+        var direccionQueSeGuarda = exEsMasLarga ? ev.dir : ex.dir;
+        ev.dir = direccionQueSeUsa;
+        var notaCombinada = ex.nt_m || '';
+        if(ev.nt_m && ev.nt_m !== notaCombinada){
+          notaCombinada = notaCombinada ? notaCombinada + ' | ' + ev.nt_m : ev.nt_m;
+        }
+        if(direccionQueSeGuarda && direccionEsValida(direccionQueSeGuarda) && notaCombinada.indexOf(direccionQueSeGuarda)===-1){
+          notaCombinada = notaCombinada ? notaCombinada + ' | 📍 ' + direccionQueSeGuarda : '📍 También incluye: ' + direccionQueSeGuarda;
+        }
+        ex.nt_m = notaCombinada;
       }
       ev.em_m=ex.em_m||ev.em_m;
       ev.nt_m=ex.nt_m||ev.nt_m;
