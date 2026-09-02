@@ -4081,7 +4081,7 @@ function direccionEsValida(dir) {
 
 function ejecutarDiagnostico(){
   const hoy = new Date(); hoy.setHours(0,0,0,0);
-  const atrasadas=[]; const porDireccion={}; const porTecnicoDia={}; const porAliadoTipo={};
+  const atrasadas=[]; const porDireccion={}; const porTecnicoDia={}; const porAliadoTipo={}; const porSitioFecha={};
 
   // Direcciones reales conocidas por orden (en TODO lo cargado), para tratar
   // "No registra"/"Sin registro"/etc. como "sin dirección" al agrupar, en
@@ -4116,6 +4116,16 @@ function ejecutarDiagnostico(){
           if(!porDireccion[key]) porDireccion[key]=[];
           porDireccion[key].push({ev:ev, fecha:fecha});
         }
+        // Detectar el MISMO punto de servicio con un ID DE ORDEN distinto:
+        // misma dirección + misma fecha + mismo tipo de orden, sin importar
+        // el oid. Esto agrupa a través de órdenes distintas (no solo dentro
+        // de una misma orden), para atrapar duplicados reales que el sistema
+        // de origen registró dos veces con IDs diferentes.
+        if(direccionEsValida(ev.dir)){
+          const keySitio = fecha+'|'+nrm(ev.dir)+'|'+nrm(ev.tc||'');
+          if(!porSitioFecha[keySitio]) porSitioFecha[keySitio]=[];
+          porSitioFecha[keySitio].push({ev:ev, fecha:fecha});
+        }
       }
       // Sobrecarga de técnico/cuadrilla por día
       const tecnico = ev.tec||ev.op||'';
@@ -4148,6 +4158,17 @@ function ejecutarDiagnostico(){
       if(aliados.length>1) duplicadas.push(grupo);
       else duplicadosExactos.push(grupo);
     }
+  });
+
+  // Mismo sitio+fecha+tipo con ID de orden DISTINTO: probablemente la misma
+  // orden real registrada dos veces con IDs diferentes en el sistema de
+  // origen (no un problema del calendario). Se pide confirmación siempre
+  // (nunca se fusiona sola), porque a diferencia de "duplicadosExactos" acá
+  // sí se está por descartar una orden completa, no solo una copia repetida
+  // de la misma.
+  const duplicadosIdDistinto = Object.values(porSitioFecha).filter(function(grupo){
+    const idsDistintos = new Set(grupo.map(function(g){ return g.ev.oid; }));
+    return idsDistintos.size > 1;
   });
 
   const UMBRAL_SOBRECARGA = 8;
@@ -4184,7 +4205,7 @@ function ejecutarDiagnostico(){
     .sort(function(a,b){ return b.items.length-a.items.length; });
 
   atrasadas.sort(function(a,b){ return b.diasAtraso-a.diasAtraso; });
-  return { atrasadas:atrasadas, duplicadas:duplicadas, duplicadosExactos:duplicadosExactos, sobrecarga:sobrecarga, patrones:patrones };
+  return { atrasadas:atrasadas, duplicadas:duplicadas, duplicadosExactos:duplicadosExactos, duplicadosIdDistinto:duplicadosIdDistinto, sobrecarga:sobrecarga, patrones:patrones };
 }
 
 // ── Notas listas para copiar (WhatsApp/correo al aliado) ──
@@ -4281,6 +4302,20 @@ async function elegirAliadoCorrectoAsst(idx, emailElegido){
   pushFullDatasetToGAS();
 }
 
+async function fusionarIdDistintoAsst(idx){
+  const diag = ejecutarDiagnostico();
+  const grupo = diag.duplicadosIdDistinto[idx];
+  if(!grupo) return;
+  if(!confirm('Se van a fusionar '+grupo.length+' tarjetas con IDs de orden distintos en una sola (misma dirección/fecha/tipo). Se conserva la de estado más avanzado y se rescatan notas/materiales de las demás antes de borrarlas. Esto no se puede deshacer. ¿Continuar?')) return;
+  fusionarGrupoDuplicado(grupo);
+  applyFilters();
+  if(selDate) renderPaneContent();
+  saveToLocalStorage();
+  toast('✅ Fusionado — se conservaron notas y materiales de ambas','ok');
+  renderAsstDiagnostico();
+  pushFullDatasetToGAS();
+}
+
 async function fusionarUnGrupoAsst(idx, origen){
   const diag = ejecutarDiagnostico();
   const grupo = diag.duplicadosExactos[idx];
@@ -4364,7 +4399,7 @@ function renderDuplicadosHTML(){
 function renderAsstDiagnostico(){
   const body=document.getElementById('asst-body');
   const diag = ejecutarDiagnostico();
-  const atrasadas=diag.atrasadas, duplicadas=diag.duplicadas, duplicadosExactos=diag.duplicadosExactos, sobrecarga=diag.sobrecarga, patrones=diag.patrones;
+  const atrasadas=diag.atrasadas, duplicadas=diag.duplicadas, duplicadosExactos=diag.duplicadosExactos, duplicadosIdDistinto=diag.duplicadosIdDistinto, sobrecarga=diag.sobrecarga, patrones=diag.patrones;
   let html='';
 
   html += '<div class="asst-section-title">⏳ OS pendientes atrasadas ('+atrasadas.length+')</div>';
@@ -4425,6 +4460,24 @@ function renderAsstDiagnostico(){
       '</div>';
     });
     if(duplicadosExactos.length>15) html += '<div class="asst-empty">…y '+(duplicadosExactos.length-15)+' más — usa "Limpiar todos"</div>';
+  }
+
+  html += '<div class="asst-section-title">🆔 Mismo sitio+fecha con ID de orden DISTINTO ('+duplicadosIdDistinto.length+')</div>';
+  if(!duplicadosIdDistinto.length){
+    html += '<div class="asst-empty">No encontré este tipo de duplicado</div>';
+  } else {
+    html += '<div class="asst-empty" style="text-align:left">Misma dirección + fecha + tipo de OS, pero con un ID de orden diferente en cada una — probablemente el sistema de origen la registró dos veces. Al fusionar se conserva la de estado más avanzado y se rescatan notas/materiales de la otra antes de borrarla.</div>';
+    duplicadosIdDistinto.slice(0,15).forEach(function(grupo, idx){
+      const primero=grupo[0];
+      const ids=[...new Set(grupo.map(function(g){return g.ev.oid;}))];
+      html += '<div class="asst-finding">'+
+        '<div onclick="irYResaltarOS(\''+primero.ev.oid+'\',\''+encodeURIComponent(primero.ev.aid)+'\',\''+primero.fecha+'\')" style="cursor:pointer">'+
+        '<b>'+grupo.length+' tarjetas, '+ids.length+' IDs distintos</b> — '+(primero.ev.tc||'')+' · '+(primero.ev.ci||'')+
+        '<div style="color:var(--gy);font-size:.74rem">'+(primero.ev.dir||'').slice(0,60)+'</div></div>'+
+        '<button class="btn btn-sm btn-secondary" style="margin-top:4px" onclick="event.stopPropagation();fusionarIdDistintoAsst('+idx+')">Fusionar (conservar la más avanzada)</button>'+
+      '</div>';
+    });
+    if(duplicadosIdDistinto.length>15) html += '<div class="asst-empty">…y '+(duplicadosIdDistinto.length-15)+' más</div>';
   }
 
   html += '<div class="asst-section-title">👷 Técnico/cuadrilla con posible sobrecarga ('+sobrecarga.length+')</div>';
