@@ -2780,6 +2780,17 @@ function processExcelRows(rows, nombre) {
     // Merge incremental (por orden + punto de servicio, no solo por orden)
     if(!osIdx[fecha]) osIdx[fecha]=[];
     var existIdx=osIdx[fecha].findIndex(function(e){return e.oid===oid&&e.aid===aid;});
+    if(existIdx<0 && direccionEsValida(dirVal)){
+      // Coincidencia exacta por (oid, aid) no encontrada. Antes de crear una
+      // tarjeta nueva, buscar por (oid, dirección) sin importar el aid: pasa
+      // cuando un archivo anterior no traía ASSIGNEE_ID (aid "hecho a mano"
+      // = oid+dirección) y este archivo sí lo trae (aid = ASSIGNEE_ID real),
+      // o viceversa — el mismo punto real quedaría duplicado si no se
+      // reconcilia aquí.
+      existIdx = osIdx[fecha].findIndex(function(e){
+        return e.oid===oid && direccionEsValida(e.dir) && nrm(e.dir)===nrm(dirVal);
+      });
+    }
     if(existIdx>=0){
       // Actualizar conservando anotaciones
       var ex=osIdx[fecha][existIdx];
