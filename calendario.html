@@ -4450,6 +4450,13 @@ async function fusionarUnGrupoAsst(idx, origen){
 // mismo criterio que ya se usa en duplicados exactos e ID distinto. Si hay
 // 2+ aliados EXTERNOS distintos en conflicto (ej. MHEV vs C3), eso sí
 // requiere criterio humano y se deja pendiente.
+// Aliados "sin identidad propia" — no cuentan como una parte real del
+// conflicto: "Otro"/vacío significa que ese registro simplemente no tenía
+// correo capturado (no que sea una empresa distinta), y un correo personal
+// (Gmail/Hotmail/Outlook/Yahoo/iCloud) suele ser un técnico usando su cuenta
+// personal en vez del nombre real del aliado — no una empresa en disputa.
+var ALIADOS_GENERICOS = ['otro','enerbit','gmail','hotmail','outlook','yahoo','icloud','live','msn'];
+
 function _resolverConflictoAutomatico(grupo){
   var primero = grupo[0].ev;
   var clave = _claveAliadoAprendido(primero.oid, primero.dir);
@@ -4462,9 +4469,28 @@ function _resolverConflictoAutomatico(grupo){
     if(!(k in porAliado)) porAliado[k] = g.ev;
   });
   var claves = Object.keys(porAliado);
+
+  // Si hay EXACTAMENTE un aliado "con nombre propio" (no genérico) entre
+  // todos los presentes, gana ese — sin importar cuántas variantes
+  // genéricas (Otro, correo personal, enerBit) haya alrededor.
+  var especificos = claves.filter(function(k){ return ALIADOS_GENERICOS.indexOf(k)===-1; });
+  if(especificos.length===1 && claves.length>1){
+    var ganador = porAliado[especificos[0]];
+    return {em: ganador.em, al: ganador.al, op: ganador.op, tec: ganador.tec};
+  }
+  // Caso previo: enerBit vs un único externo (cualquiera sea, incl. si ese
+  // externo también resultó ser genérico — cubierto arriba en general, se
+  // deja este bloque solo por claridad/compatibilidad).
   if(claves.length===2 && claves.includes('enerbit')){
     var externo = porAliado[claves.find(function(k){ return k!=='enerbit'; })];
     return {em: externo.em, al: externo.al, op: externo.op, tec: externo.tec};
+  }
+  // Sin ningún aliado con nombre propio, pero "Otro" (sin correo capturado)
+  // contra UN correo personal (Gmail/Hotmail/etc.): cualquier dato real es
+  // mejor que ningún dato — se prefiere el que sí tiene correo.
+  if(claves.length===2 && claves.includes('otro')){
+    var conDato = porAliado[claves.find(function(k){ return k!=='otro'; })];
+    if(conDato.em) return {em: conDato.em, al: conDato.al, op: conDato.op, tec: conDato.tec};
   }
   return null;
 }
