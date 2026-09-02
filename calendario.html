@@ -2951,6 +2951,12 @@ function resetApp() {
   document.getElementById('file-input').value='';
   setSyncUI('','Sin datos');
   document.getElementById('dep-legend').classList.remove('show');
+  // El panel del asistente (Diagnóstico, Preguntar, etc.) no se refresca
+  // solo — sin esto, se queda mostrando los conteos/hallazgos de ANTES del
+  // reset, dando la falsa impresión de que el agente "todavía tiene" el
+  // Excel viejo cargado, aunque osIdx ya esté vacío.
+  actualizarBadgeAsistente();
+  if(document.getElementById('asst-body')) switchAsstTab(asstTab);
 }
 
 // ── SINCRONIZACIÓN EN TIEMPO REAL ─────────────────────────────
