@@ -2882,7 +2882,7 @@ function processExcelRows(rows, nombre) {
     // se usó la primera como dirección de la tarjeta — las demás quedan
     // registradas en la nota para no perderlas.
     if (direccionesEnTexto.length > 1 && !prev.nt_m) {
-      ev.nt_m = '📍 También incluye: ' + direccionesEnTexto.slice(1).join(' | ');
+      ev.nt_m = '⚠️ Esta orden cubre varios puntos/apartamentos — el estado que ves aplica a TODA la orden, no a cada uno por separado. 📍 También incluye: ' + direccionesEnTexto.slice(1).join(' | ');
     }
 
     // Aliado aprendido: si para esta orden+dirección ya se resolvió antes a
@@ -2984,7 +2984,14 @@ function processExcelRows(rows, nombre) {
           notaCombinada = notaCombinada ? notaCombinada + ' | ' + ev.nt_m : ev.nt_m;
         }
         if(direccionQueSeGuarda && direccionEsValida(direccionQueSeGuarda) && notaCombinada.indexOf(direccionQueSeGuarda)===-1){
-          notaCombinada = notaCombinada ? notaCombinada + ' | 📍 ' + direccionQueSeGuarda : '📍 También incluye: ' + direccionQueSeGuarda;
+          var yaAvisado = notaCombinada.indexOf('cubre varios puntos')!==-1;
+          if(!notaCombinada){
+            notaCombinada = '⚠️ Esta orden cubre varios puntos/apartamentos — el estado que ves aplica a TODA la orden, no a cada uno por separado. 📍 También incluye: ' + direccionQueSeGuarda;
+          } else if(!yaAvisado){
+            notaCombinada = '⚠️ Esta orden cubre varios puntos/apartamentos — el estado que ves aplica a TODA la orden, no a cada uno por separado. 📍 También incluye: ' + direccionQueSeGuarda + ' | ' + notaCombinada;
+          } else {
+            notaCombinada = notaCombinada + ' | 📍 ' + direccionQueSeGuarda;
+          }
         }
         ex.nt_m = notaCombinada;
       }
