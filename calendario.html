@@ -2799,12 +2799,16 @@ function processExcelRows(rows, nombre) {
     // un duplicado.
     if(!osIdx[fecha]) osIdx[fecha]=[];
     var encontrado = null; // {ev, fecha}
+    var matchExacto = false; // true = mismo (oid,aid) exacto: la fila nueva es autoritativa, no hay que "elegir la mejor"
 
     // 1) Coincidencia exacta (oid, aid) — primero en la fecha de esta fila,
     //    si no, en cualquier otra (vía prevMap, ya indexado por esa clave).
+    //    Es el mismo punto de servicio reportado de nuevo (misma fuente/
+    //    esquema) — la fila nueva gana siempre, sin importar si el estado
+    //    "empeoró" (ej. de Ejecutada a Pendiente por una corrección real).
     var idxMismaFecha = osIdx[fecha].findIndex(function(e){return e.oid===oid&&e.aid===aid;});
-    if(idxMismaFecha>=0) encontrado = {ev: osIdx[fecha][idxMismaFecha], fecha: fecha};
-    if(!encontrado && prevMap[key]) encontrado = {ev: prevMap[key].ev, fecha: prevMap[key].fecha};
+    if(idxMismaFecha>=0){ encontrado = {ev: osIdx[fecha][idxMismaFecha], fecha: fecha}; matchExacto = true; }
+    if(!encontrado && prevMap[key]){ encontrado = {ev: prevMap[key].ev, fecha: prevMap[key].fecha}; matchExacto = true; }
 
     // 2) Coincidencia por (oid, dirección normalizada exacta) en CUALQUIER
     //    fecha, sin importar el aid — cubre cuando un archivo trae/no trae
@@ -2838,6 +2842,23 @@ function processExcelRows(rows, nombre) {
       else if(relacionados.length>1) return; // ambiguo entre varios apartamentos: no adivinar
     }
 
+    // 4) Esta fila NO trae dirección utilizable (vacía o "No registra"/"Sin
+    //    registro"/etc.). Si esta orden tiene exactamente UN punto de
+    //    servicio con dirección válida en todo lo cargado, es el mismo — un
+    //    dato simplemente faltante en este archivo, no un apartamento nuevo.
+    //    Si tiene 2+ (edificio real con varios apartamentos), es ambiguo:
+    //    no se adivina, se descarta esta fila.
+    if(!encontrado && !direccionEsValida(dirVal)){
+      var candidatosOid = [];
+      Object.keys(osIdx).forEach(function(f){
+        osIdx[f].forEach(function(e){
+          if(e.oid===oid && direccionEsValida(e.dir)) candidatosOid.push({ev:e, fecha:f});
+        });
+      });
+      if(candidatosOid.length===1) encontrado = candidatosOid[0];
+      else if(candidatosOid.length>1) return; // ambiguo: no se sabe a cuál apartamento pertenece
+    }
+
     if(encontrado){
       var ex = encontrado.ev;
       // Si la dirección nueva es más específica (más larga) que la que ya
@@ -2853,18 +2874,22 @@ function processExcelRows(rows, nombre) {
       // de la misma OS, se van sumando a la lista en vez de perder las
       // anteriores cada vez que se repite la orden.
       ev.mts = ex.mts ? ex.mts.slice() : [];
-      // Desempate cuando el mismo punto de servicio aparece repetido con
-      // datos distintos (reasignación histórica sin depurar): se queda con
-      // el de mejor estado (ejecutada > cancelada > reprogramada > pendiente)
-      // y, a igualdad de estado, con el aliado externo sobre un correo
-      // interno @enerbit.co — igual que el desempate ya usado en Snowflake.
-      var PRIORIDAD_ST = {done:3, cancel:2, reprog:1, pending:0};
-      var exEraEnerbit = /@enerbit\.co$/i.test(ex.em||'');
-      var nuevaEsEnerbit = /@enerbit\.co$/i.test(ev.em||'');
-      var exPrio = PRIORIDAD_ST[ex.st] ?? -1, nuevaPrio = PRIORIDAD_ST[ev.st] ?? -1;
-      var exEsMejor = exPrio > nuevaPrio || (exPrio === nuevaPrio && !exEraEnerbit && nuevaEsEnerbit);
-      if(exEsMejor){
-        ev.st = ex.st; ev.em = ex.em; ev.al = ex.al; ev.op = ex.op; ev.tec = ex.tec;
+      if(!matchExacto){
+        // Solo cuando el match es "difuso" (distinto esquema de aid o
+        // dirección parcial) puede haber ambigüedad real sobre cuál copia es
+        // la vigente — ahí sí se aplica el desempate por prioridad de estado
+        // y aliado externo sobre @enerbit.co. Si el match fue EXACTO (mismo
+        // oid+aid), la fila nueva es la fuente más confiable y manda sin
+        // desempate — así una corrección real (ej. de Ejecutada a Pendiente)
+        // no se ignora por "parecer un retroceso".
+        var PRIORIDAD_ST = {done:3, cancel:2, reprog:1, pending:0};
+        var exEraEnerbit = /@enerbit\.co$/i.test(ex.em||'');
+        var nuevaEsEnerbit = /@enerbit\.co$/i.test(ev.em||'');
+        var exPrio = PRIORIDAD_ST[ex.st] ?? -1, nuevaPrio = PRIORIDAD_ST[ev.st] ?? -1;
+        var exEsMejor = exPrio > nuevaPrio || (exPrio === nuevaPrio && !exEraEnerbit && nuevaEsEnerbit);
+        if(exEsMejor){
+          ev.st = ex.st; ev.em = ex.em; ev.al = ex.al; ev.op = ex.op; ev.tec = ex.tec;
+        }
       }
       // Sacar la copia vieja de donde estuviera (misma fecha o distinta) y
       // dejar la actualizada en la fecha de esta fila.
