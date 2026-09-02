@@ -4017,7 +4017,12 @@ function switchAsstTab(tab){
   asstTab = tab;
   document.querySelectorAll('.asst-tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab===tab); });
   if(tab==='preguntar') renderAsstPreguntar();
-  else if(tab==='diagnostico') renderAsstDiagnostico();
+  else if(tab==='diagnostico'){
+    // Corrige lo que ya está en el panel (sin esperar a un nuevo archivo o
+    // a recargar la página) apenas se abre esta pestaña.
+    ejecutarDiagnosticoAutomatico();
+    renderAsstDiagnostico();
+  }
   else if(tab==='exportar') renderAsstExportar();
   else if(tab==='config') renderAsstConfig();
   else renderAsstMaterial();
