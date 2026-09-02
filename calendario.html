@@ -2641,6 +2641,24 @@ function processExcelRows(rows, nombre) {
     return;
   }
 
+  // Algunas OS (ej. "Normalización del sistema de comunicación"/telemedida)
+  // no traen Dirección propia — es normal en ese tipo, porque cubren varios
+  // medidores a la vez y la(s) dirección(es) real(es) vienen escondidas
+  // dentro del texto de observaciones, con el patrón "FrtXXXXXXX NNNNNNNN
+  // <dirección>" repetido una vez por medidor. Se extraen para no perder
+  // ese dato solo porque el campo Dirección esté vacío/"No registra".
+  function extraerDireccionesDeTexto(texto) {
+    if (!texto) return [];
+    var direcciones = [];
+    var re = /Frt\d+\s+\d+\s+([\s\S]*?)(?=Frt\d+\s+\d+|$)/g;
+    var m;
+    while ((m = re.exec(texto)) !== null) {
+      var d = m[1].replace(/[,;]\s*$/, '').trim();
+      if (d) direcciones.push(d);
+    }
+    return direcciones;
+  }
+
   function getVal(row, col, max) {
     var v = col ? (row[col] || '') : '';
     v = String(v).trim();
@@ -2711,6 +2729,16 @@ function processExcelRows(rows, nombre) {
     // apartamentos/medidores (mismo ID ORDEN, distinta DIRECCIÓN) en una sola fila.
     var dirVal = getVal(row, COL.dir, 80);
     var dirValida = direccionEsValida(dirVal);
+    var direccionesEnTexto = [];
+    if (!dirValida) {
+      // Buscar en observaciones/descripción (sin truncar, para no cortar el patrón)
+      direccionesEnTexto = extraerDireccionesDeTexto(getVal(row, COL.obs))
+        .concat(extraerDireccionesDeTexto(getVal(row, COL.des)));
+      if (direccionesEnTexto.length) {
+        dirVal = direccionesEnTexto[0].substring(0, 80);
+        dirValida = direccionEsValida(dirVal);
+      }
+    }
     var emailVal = getVal(row, COL.email, 60);
     var opVal = getVal(row, COL.op, 60);
     // Punto de servicio = orden + dirección. Si hay dirección VÁLIDA, ES la
@@ -2777,6 +2805,13 @@ function processExcelRows(rows, nombre) {
       nt_m:prev.nt_m||'', mat:prev.mat||'',
       medidor: getVal(row, COL.medidor, 40)
     };
+
+    // Si esta OS cubre varios medidores/direcciones a la vez (ver arriba),
+    // se usó la primera como dirección de la tarjeta — las demás quedan
+    // registradas en la nota para no perderlas.
+    if (direccionesEnTexto.length > 1 && !prev.nt_m) {
+      ev.nt_m = '📍 También incluye: ' + direccionesEnTexto.slice(1).join(' | ');
+    }
 
     // Aliado aprendido: si para esta orden+dirección ya se resolvió antes a
     // mano un conflicto de aliados (en Diagnóstico), se respeta esa decisión
