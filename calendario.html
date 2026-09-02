@@ -4414,8 +4414,26 @@ function ejecutarDiagnostico(){
     .filter(function(g){ return g.items.length >= UMBRAL_PATRON; })
     .sort(function(a,b){ return b.items.length-a.items.length; });
 
+  // Fallas de comunicación (telemedida/SIM) activas — agrupadas por
+  // departamento, para priorizar dónde atacar primero. "Activa" = el punto
+  // sigue sin comunicar (no quedó en estado ejecutada/resuelto).
+  var fallasComunicacionPorDepto = {};
+  Object.entries(osIdx).forEach(function(entry){
+    var fecha = entry[0];
+    entry[1].forEach(function(ev){
+      if(nrm(ev.tc||'').indexOf('falla') === -1 && nrm(ev.tc||'').indexOf('comunicaci') === -1) return;
+      if(calcStatus(ev) === 'done') return; // ya está comunicando de nuevo
+      var depto = ev.sta || 'Sin departamento';
+      if(!fallasComunicacionPorDepto[depto]) fallasComunicacionPorDepto[depto] = [];
+      fallasComunicacionPorDepto[depto].push({ev:ev, fecha:fecha});
+    });
+  });
+  var fallasComunicacion = Object.entries(fallasComunicacionPorDepto)
+    .map(function(e){ return {depto:e[0], items:e[1]}; })
+    .sort(function(a,b){ return b.items.length-a.items.length; });
+
   atrasadas.sort(function(a,b){ return b.diasAtraso-a.diasAtraso; });
-  return { atrasadas:atrasadas, duplicadas:duplicadas, duplicadosExactos:duplicadosExactos, duplicadosIdDistinto:duplicadosIdDistinto, sobrecarga:sobrecarga, patrones:patrones };
+  return { atrasadas:atrasadas, duplicadas:duplicadas, duplicadosExactos:duplicadosExactos, duplicadosIdDistinto:duplicadosIdDistinto, sobrecarga:sobrecarga, patrones:patrones, fallasComunicacion:fallasComunicacion };
 }
 
 // ── Notas listas para copiar (WhatsApp/correo al aliado) ──
@@ -4716,10 +4734,31 @@ function renderDuplicadosHTML(){
 function renderAsstDiagnostico(){
   const body=document.getElementById('asst-body');
   const diag = ejecutarDiagnostico();
-  const atrasadas=diag.atrasadas, duplicadas=diag.duplicadas, duplicadosExactos=diag.duplicadosExactos, duplicadosIdDistinto=diag.duplicadosIdDistinto, sobrecarga=diag.sobrecarga, patrones=diag.patrones;
+  const atrasadas=diag.atrasadas, duplicadas=diag.duplicadas, duplicadosExactos=diag.duplicadosExactos, duplicadosIdDistinto=diag.duplicadosIdDistinto, sobrecarga=diag.sobrecarga, patrones=diag.patrones, fallasComunicacion=diag.fallasComunicacion;
   let html='';
 
   html += '<div style="margin-bottom:10px"><button class="btn btn-primary" style="width:100%" onclick="limpiarTodoAsst()">🧹⚡ Limpiar TODO lo seguro de una vez</button></div>';
+
+  const totalFallasComunicacion = fallasComunicacion.reduce(function(s,g){return s+g.items.length;},0);
+  html += '<div class="asst-section-title">📡 Fallas de comunicación activas por departamento ('+totalFallasComunicacion+')</div>';
+  if(!fallasComunicacion.length){
+    html += '<div class="asst-empty">Ninguna falla de comunicación activa 🎉</div>';
+  } else {
+    fallasComunicacion.forEach(function(g, idx){
+      const cid = 'fc-'+idx;
+      html += '<div class="asst-finding">'+
+        '<div onclick="var d=document.getElementById(\''+cid+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">'+
+        '<b>'+g.depto+'</b><span class="sev-alta">'+g.items.length+' punto(s)</span></div>'+
+        '<div id="'+cid+'" style="display:none;margin-top:6px">'+
+        g.items.slice(0,20).map(function(x){
+          return '<div style="padding:4px 0;border-top:1px solid var(--bd);cursor:pointer" onclick="event.stopPropagation();irYResaltarOS(\''+x.ev.oid+'\',\''+encodeURIComponent(x.ev.aid)+'\',\''+x.fecha+'\')">'+
+            (x.ev.dir||'sin dirección').slice(0,55)+' · '+(x.ev.ci||'')+' · '+x.fecha+'</div>';
+        }).join('')+
+        (g.items.length>20?'<div class="asst-empty">…y '+(g.items.length-20)+' más</div>':'')+
+        '</div>'+
+      '</div>';
+    });
+  }
 
   html += '<div class="asst-section-title">⏳ OS pendientes atrasadas ('+atrasadas.length+')</div>';
   if(!atrasadas.length){
