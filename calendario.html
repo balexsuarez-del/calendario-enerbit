@@ -829,6 +829,7 @@ textarea.fi{resize:vertical;min-height:60px}
     <div class="asst-tab active" data-tab="preguntar" onclick="switchAsstTab('preguntar')">Preguntar</div>
     <div class="asst-tab" data-tab="diagnostico" onclick="switchAsstTab('diagnostico')">Diagnóstico</div>
     <div class="asst-tab" data-tab="material" onclick="switchAsstTab('material')">Material/Notas</div>
+    <div class="asst-tab" data-tab="tabla" onclick="switchAsstTab('tabla')">📊 Tabla</div>
     <div class="asst-tab" data-tab="exportar" onclick="switchAsstTab('exportar')">Exportar</div>
     <div class="asst-tab" data-tab="config" onclick="switchAsstTab('config')">⚙️</div>
   </div>
@@ -4049,6 +4050,7 @@ function switchAsstTab(tab){
   }
   else if(tab==='exportar') renderAsstExportar();
   else if(tab==='config') renderAsstConfig();
+  else if(tab==='tabla') renderAsstTabla();
   else renderAsstMaterial();
 }
 
@@ -5309,6 +5311,104 @@ function ejecutarActualizacionMaterial(){
   detalles.slice(0,30).forEach(function(d){ html += findingRowHTML(d.ev, d.fecha); });
   if(resultEl) resultEl.innerHTML = html;
   toast(actualizadas+' OS actualizadas','ok');
+}
+
+// ── TABLA EDITABLE (tipo Excel) ──────────────────────────────
+var tablaFilas = []; // referencias directas a los ev de la fila visible actual, por índice
+var tablaCambiosSinGuardar = false;
+
+function renderAsstTabla(){
+  const body = document.getElementById('asst-body');
+  const hoy = dateKey(new Date());
+  const desde = document.getElementById('tabla-desde')?.value || dateKey(new Date(curY, curM, 1));
+  const hasta = document.getElementById('tabla-hasta')?.value || dateKey(new Date(curY, curM+1, 0));
+  const texto = nrm(document.getElementById('tabla-buscar')?.value || '');
+
+  var candidatos = [];
+  Object.entries(osIdx).forEach(function(entry){
+    var fecha = entry[0];
+    if(fecha < desde || fecha > hasta) return;
+    entry[1].forEach(function(ev){
+      if(texto && !(nrm(ev.oid).includes(texto) || nrm(ev.dir||'').includes(texto) || nrm(ev.ci||'').includes(texto))) return;
+      candidatos.push({ev:ev, fecha:fecha});
+    });
+  });
+  candidatos.sort(function(a,b){ return a.fecha<b.fecha?-1:a.fecha>b.fecha?1:0; });
+
+  const LIMITE = 300;
+  const totalEncontrado = candidatos.length;
+  tablaFilas = candidatos.slice(0, LIMITE);
+
+  var html = '<div class="asst-section-title">📊 Tabla editable</div>';
+  html += '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">'+
+    '<input type="date" id="tabla-desde" value="'+desde+'" onchange="renderAsstTabla()" style="flex:1;min-width:110px;padding:4px;border:1px solid var(--bd);border-radius:6px;font-size:.75rem">'+
+    '<input type="date" id="tabla-hasta" value="'+hasta+'" onchange="renderAsstTabla()" style="flex:1;min-width:110px;padding:4px;border:1px solid var(--bd);border-radius:6px;font-size:.75rem">'+
+  '</div>'+
+  '<input type="text" id="tabla-buscar" placeholder="Buscar por ID, dirección o ciudad..." value="'+(document.getElementById('tabla-buscar')?.value||'').replace(/"/g,'&quot;')+'" oninput="renderAsstTabla()" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:6px;font-size:.78rem;margin-bottom:8px;box-sizing:border-box">';
+
+  html += '<div style="font-size:.72rem;color:var(--gy);margin-bottom:6px">Mostrando '+tablaFilas.length+' de '+totalEncontrado+
+    (totalEncontrado>LIMITE ? ' — acota el rango de fechas o busca algo más específico para ver el resto.' : '') + '</div>';
+
+  html += '<button class="btn btn-primary btn-sm" style="width:100%;margin-bottom:8px" onclick="guardarCambiosTabla()">💾 Guardar todos los cambios'+(tablaCambiosSinGuardar?' <span class="sev-alta">●</span>':'')+'</button>';
+
+  if(!tablaFilas.length){
+    html += '<div class="asst-empty">No hay OS en ese rango/búsqueda</div>';
+  } else {
+    html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.72rem">'+
+      '<thead><tr style="background:var(--bg2);text-align:left">'+
+        ['Fecha','ID orden','Estado','Ciudad','Depto','Dirección','Aliado (correo)','Nota'].map(function(h){
+          return '<th style="padding:4px 6px;white-space:nowrap;border-bottom:1px solid var(--bd)">'+h+'</th>';
+        }).join('')+
+      '</tr></thead><tbody>';
+    tablaFilas.forEach(function(row, idx){
+      var ev = row.ev;
+      var estOpts = ['','pending','reprog','cancel','done'].map(function(k){
+        var label = k===''?'(sin override)':(ST[k]?ST[k].label:k);
+        return '<option value="'+k+'"'+((ev.em_m||'')===k?' selected':'')+'>'+label+'</option>';
+      }).join('');
+      html += '<tr style="border-bottom:1px solid var(--bd)" onclick="irYResaltarOS(\''+ev.oid+'\',\''+encodeURIComponent(ev.aid)+'\',\''+row.fecha+'\')" data-fila="'+idx+'">'+
+        '<td style="padding:3px 6px;white-space:nowrap">'+row.fecha+'</td>'+
+        '<td style="padding:3px 6px;white-space:nowrap;font-family:monospace">'+(ev.oid||'').slice(-8)+'</td>'+
+        '<td style="padding:2px" onclick="event.stopPropagation()"><select onchange="editarCeldaTabla('+idx+',\'em_m\',this.value)" style="width:100%;font-size:.72rem;border:1px solid var(--bd);border-radius:4px">'+estOpts+'</select></td>'+
+        '<td style="padding:2px" onclick="event.stopPropagation()"><input value="'+(ev.ci||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'ci\',this.value)" style="width:80px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
+        '<td style="padding:2px" onclick="event.stopPropagation()"><input value="'+(ev.sta||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'sta\',this.value)" style="width:80px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
+        '<td style="padding:2px" onclick="event.stopPropagation()"><input value="'+(ev.dir||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'dir\',this.value)" style="width:160px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
+        '<td style="padding:2px" onclick="event.stopPropagation()"><input value="'+(ev.em||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'em\',this.value)" style="width:130px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
+        '<td style="padding:2px" onclick="event.stopPropagation()"><input value="'+(ev.nt_m||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'nt_m\',this.value)" style="width:160px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
+      '</tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+  body.innerHTML = html;
+}
+
+function editarCeldaTabla(idx, campo, valor){
+  var row = tablaFilas[idx];
+  if(!row) return;
+  var ev = row.ev;
+  if(campo==='em'){
+    ev.em = valor;
+    ev.al = getAliado(valor); // recalcular el aliado según el nuevo correo
+  } else {
+    ev[campo] = valor;
+  }
+  tablaCambiosSinGuardar = true;
+  // Reflejar el cambio de aliado inmediatamente sin re-renderizar toda la
+  // tabla (perdería el foco de lo que se está editando).
+  var btn = document.querySelector('.asst-body .btn-primary');
+  if(btn && !btn.innerHTML.includes('sev-alta')) btn.innerHTML = '💾 Guardar todos los cambios <span class="sev-alta">●</span>';
+}
+
+function guardarCambiosTabla(){
+  saveToLocalStorage();
+  applyFilters();
+  if(selDate) renderPaneContent();
+  tablaCambiosSinGuardar = false;
+  toast('💾 Cambios guardados y sincronizando…','ok');
+  pushFullDatasetToGAS().then(function(ok){
+    toast(ok ? '✅ Sincronizado con Google Sheets' : '⚠️ Guardado local, pero no se pudo sincronizar con Sheets — reintenta más tarde', ok?'ok':'err');
+  });
+  renderAsstTabla();
 }
 
 // ── EXPORTAR: Excel con historial de notas + estado, por rango de fechas ──
