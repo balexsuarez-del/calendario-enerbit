@@ -5316,24 +5316,57 @@ function ejecutarActualizacionMaterial(){
 // ── TABLA EDITABLE (tipo Excel) ──────────────────────────────
 var tablaFilas = []; // referencias directas a los ev de la fila visible actual, por índice
 var tablaCambiosSinGuardar = false;
+var tablaFiltrosVisibles = false;
+var tablaOrdenCol = 'fecha';
+var tablaOrdenAsc = true;
+const TABLA_COLS = [
+  {key:'fecha', label:'Fecha'},
+  {key:'oid',   label:'ID orden'},
+  {key:'st',    label:'Estado'},
+  {key:'ci',    label:'Ciudad'},
+  {key:'sta',   label:'Depto'},
+  {key:'dir',   label:'Dirección'},
+  {key:'em',    label:'Aliado (correo)'},
+  {key:'medidor',label:'Medidor'},
+  {key:'nt_m',  label:'Nota'},
+];
 
 function renderAsstTabla(){
   const body = document.getElementById('asst-body');
-  const hoy = dateKey(new Date());
   const desde = document.getElementById('tabla-desde')?.value || dateKey(new Date(curY, curM, 1));
   const hasta = document.getElementById('tabla-hasta')?.value || dateKey(new Date(curY, curM+1, 0));
   const texto = nrm(document.getElementById('tabla-buscar')?.value || '');
+  const fDepto = document.getElementById('tabla-depto')?.value || '';
+  const fAliado = document.getElementById('tabla-aliado')?.value || '';
+  const fMedidor = nrm(document.getElementById('tabla-medidor')?.value || '');
+
+  var deptosDisponibles = new Set(), aliadosDisponibles = new Set();
 
   var candidatos = [];
   Object.entries(osIdx).forEach(function(entry){
     var fecha = entry[0];
     if(fecha < desde || fecha > hasta) return;
     entry[1].forEach(function(ev){
+      if(ev.sta) deptosDisponibles.add(ev.sta);
+      if(ev.al) aliadosDisponibles.add(ev.al);
       if(texto && !(nrm(ev.oid).includes(texto) || nrm(ev.dir||'').includes(texto) || nrm(ev.ci||'').includes(texto))) return;
+      if(fDepto && ev.sta!==fDepto) return;
+      if(fAliado && ev.al!==fAliado) return;
+      if(fMedidor && !nrm(ev.medidor||'').includes(fMedidor)) return;
       candidatos.push({ev:ev, fecha:fecha});
     });
   });
-  candidatos.sort(function(a,b){ return a.fecha<b.fecha?-1:a.fecha>b.fecha?1:0; });
+
+  function valorOrden(row){
+    if(tablaOrdenCol==='fecha') return row.fecha;
+    if(tablaOrdenCol==='st') return calcStatus(row.ev);
+    return nrm(row.ev[tablaOrdenCol]||'');
+  }
+  candidatos.sort(function(a,b){
+    var va=valorOrden(a), vb=valorOrden(b);
+    var cmp = va<vb?-1:va>vb?1:0;
+    return tablaOrdenAsc ? cmp : -cmp;
+  });
 
   const LIMITE = 300;
   const totalEncontrado = candidatos.length;
@@ -5343,8 +5376,23 @@ function renderAsstTabla(){
   html += '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">'+
     '<input type="date" id="tabla-desde" value="'+desde+'" onchange="renderAsstTabla()" style="flex:1;min-width:110px;padding:4px;border:1px solid var(--bd);border-radius:6px;font-size:.75rem">'+
     '<input type="date" id="tabla-hasta" value="'+hasta+'" onchange="renderAsstTabla()" style="flex:1;min-width:110px;padding:4px;border:1px solid var(--bd);border-radius:6px;font-size:.75rem">'+
+    '<button class="btn btn-ghost btn-sm" onclick="tablaFiltrosVisibles=!tablaFiltrosVisibles;renderAsstTabla()">🔍 Filtros'+(tablaFiltrosVisibles?' ▲':' ▼')+'</button>'+
   '</div>'+
   '<input type="text" id="tabla-buscar" placeholder="Buscar por ID, dirección o ciudad..." value="'+(document.getElementById('tabla-buscar')?.value||'').replace(/"/g,'&quot;')+'" oninput="renderAsstTabla()" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:6px;font-size:.78rem;margin-bottom:8px;box-sizing:border-box">';
+
+  if(tablaFiltrosVisibles){
+    html += '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;background:var(--bg2);padding:8px;border-radius:8px">'+
+      '<select id="tabla-depto" onchange="renderAsstTabla()" style="flex:1;min-width:100px;padding:4px;border:1px solid var(--bd);border-radius:6px;font-size:.74rem">'+
+        '<option value="">Depto: todos</option>'+
+        [...deptosDisponibles].sort().map(function(d){ return '<option value="'+d+'"'+(fDepto===d?' selected':'')+'>'+d+'</option>'; }).join('')+
+      '</select>'+
+      '<select id="tabla-aliado" onchange="renderAsstTabla()" style="flex:1;min-width:100px;padding:4px;border:1px solid var(--bd);border-radius:6px;font-size:.74rem">'+
+        '<option value="">Aliado: todos</option>'+
+        [...aliadosDisponibles].sort().map(function(a){ return '<option value="'+a+'"'+(fAliado===a?' selected':'')+'>'+a+'</option>'; }).join('')+
+      '</select>'+
+      '<input type="text" id="tabla-medidor" placeholder="Medidor..." value="'+(document.getElementById('tabla-medidor')?.value||'').replace(/"/g,'&quot;')+'" oninput="renderAsstTabla()" style="flex:1;min-width:100px;padding:4px;border:1px solid var(--bd);border-radius:6px;font-size:.74rem">'+
+    '</div>';
+  }
 
   html += '<div style="font-size:.72rem;color:var(--gy);margin-bottom:6px">Mostrando '+tablaFilas.length+' de '+totalEncontrado+
     (totalEncontrado>LIMITE ? ' — acota el rango de fechas o busca algo más específico para ver el resto.' : '') + '</div>';
@@ -5356,8 +5404,9 @@ function renderAsstTabla(){
   } else {
     html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.72rem">'+
       '<thead><tr style="background:var(--bg2);text-align:left">'+
-        ['Fecha','ID orden','Estado','Ciudad','Depto','Dirección','Aliado (correo)','Nota'].map(function(h){
-          return '<th style="padding:4px 6px;white-space:nowrap;border-bottom:1px solid var(--bd)">'+h+'</th>';
+        TABLA_COLS.map(function(c){
+          var flecha = tablaOrdenCol===c.key ? (tablaOrdenAsc?' ▲':' ▼') : '';
+          return '<th onclick="ordenarTabla(\''+c.key+'\')" style="padding:4px 6px;white-space:nowrap;border-bottom:1px solid var(--bd);cursor:pointer;user-select:none">'+c.label+flecha+'</th>';
         }).join('')+
       '</tr></thead><tbody>';
     tablaFilas.forEach(function(row, idx){
@@ -5374,12 +5423,19 @@ function renderAsstTabla(){
         '<td style="padding:2px" onclick="event.stopPropagation()"><input value="'+(ev.sta||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'sta\',this.value)" style="width:80px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
         '<td style="padding:2px" onclick="event.stopPropagation()"><input value="'+(ev.dir||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'dir\',this.value)" style="width:160px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
         '<td style="padding:2px" onclick="event.stopPropagation()"><input value="'+(ev.em||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'em\',this.value)" style="width:130px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
+        '<td style="padding:2px" onclick="event.stopPropagation()"><input value="'+(ev.medidor||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'medidor\',this.value)" style="width:90px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
         '<td style="padding:2px" onclick="event.stopPropagation()"><input value="'+(ev.nt_m||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'nt_m\',this.value)" style="width:160px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
       '</tr>';
     });
     html += '</tbody></table></div>';
   }
   body.innerHTML = html;
+}
+
+function ordenarTabla(col){
+  if(tablaOrdenCol===col) tablaOrdenAsc = !tablaOrdenAsc;
+  else { tablaOrdenCol = col; tablaOrdenAsc = true; }
+  renderAsstTabla();
 }
 
 function editarCeldaTabla(idx, campo, valor){
