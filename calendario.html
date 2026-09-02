@@ -4413,20 +4413,43 @@ async function fusionarUnGrupoAsst(idx, origen){
   }
   pushFullDatasetToGAS();
 }
+// Resuelve un conflicto de aliado SIN pedir confirmación individual, solo
+// cuando es inequívoco: (1) ya se había decidido antes a mano, o (2) el
+// conflicto es "enerBit" (correo interno) contra UN ÚNICO aliado externo —
+// mismo criterio que ya se usa en duplicados exactos e ID distinto. Si hay
+// 2+ aliados EXTERNOS distintos en conflicto (ej. MHEV vs C3), eso sí
+// requiere criterio humano y se deja pendiente.
+function _resolverConflictoAutomatico(grupo){
+  var primero = grupo[0].ev;
+  var clave = _claveAliadoAprendido(primero.oid, primero.dir);
+  var aprendido = correccionesAprendidas.aliados[clave];
+  if(aprendido) return aprendido;
+
+  var porAliado = {};
+  grupo.forEach(function(g){
+    var k = nrm(g.ev.al||'');
+    if(!(k in porAliado)) porAliado[k] = g.ev;
+  });
+  var claves = Object.keys(porAliado);
+  if(claves.length===2 && claves.includes('enerbit')){
+    var externo = porAliado[claves.find(function(k){ return k!=='enerbit'; })];
+    return {em: externo.em, al: externo.al, op: externo.op, tec: externo.tec};
+  }
+  return null;
+}
+
 async function limpiarTodoAsst(){
   const diag = ejecutarDiagnostico();
 
   // Contar de antemano (sin mutar nada todavía) para el mensaje de confirmación.
   const nExactos = diag.duplicadosExactos.length;
   const nIdDistinto = diag.duplicadosIdDistinto.length;
-  var nConflictosConAprendizaje = 0, nConflictosSinAprendizaje = 0;
+  var nConflictosResueltos = 0, nConflictosSinAprendizaje = 0;
   diag.duplicadas.forEach(function(grupo){
-    var primero = grupo[0].ev;
-    var clave = _claveAliadoAprendido(primero.oid, primero.dir);
-    if(correccionesAprendidas.aliados[clave]) nConflictosConAprendizaje++;
+    if(_resolverConflictoAutomatico(grupo)) nConflictosResueltos++;
     else nConflictosSinAprendizaje++;
   });
-  const total = nExactos + nIdDistinto + nConflictosConAprendizaje;
+  const total = nExactos + nIdDistinto + nConflictosResueltos;
 
   if(total===0){
     toast(nConflictosSinAprendizaje>0
@@ -4437,18 +4460,16 @@ async function limpiarTodoAsst(){
   if(!confirm('Se van a fusionar '+total+' grupo(s) de tarjetas duplicadas:\n'+
     '• '+nExactos+' duplicados exactos (mismo aliado)\n'+
     '• '+nIdDistinto+' con ID de orden distinto (misma dirección/fecha/tipo)\n'+
-    '• '+nConflictosConAprendizaje+' conflictos de aliado ya resueltos antes (se aplica lo aprendido)\n'+
-    (nConflictosSinAprendizaje>0 ? '\n'+nConflictosSinAprendizaje+' conflicto(s) SIN decisión previa quedan pendientes para revisar a mano.\n' : '')+
+    '• '+nConflictosResueltos+' conflictos de aliado resueltos automáticamente (enerBit vs. un solo aliado externo, o ya aprendidos antes)\n'+
+    (nConflictosSinAprendizaje>0 ? '\n'+nConflictosSinAprendizaje+' conflicto(s) genuinamente ambiguos (2+ aliados externos distintos) quedan pendientes para revisar a mano.\n' : '')+
     '\nEsto afecta a todos los colaboradores y no se puede deshacer. ¿Continuar?')) return;
 
   diag.duplicadosExactos.forEach(function(grupo){ fusionarGrupoDuplicado(grupo); });
   diag.duplicadosIdDistinto.forEach(function(grupo){ fusionarGrupoDuplicado(grupo); });
   diag.duplicadas.forEach(function(grupo){
-    var primero = grupo[0].ev;
-    var clave = _claveAliadoAprendido(primero.oid, primero.dir);
-    var aprendido = correccionesAprendidas.aliados[clave];
-    if(aprendido){
-      grupo.forEach(function(g){ Object.assign(g.ev, aprendido); });
+    var resuelto = _resolverConflictoAutomatico(grupo);
+    if(resuelto){
+      grupo.forEach(function(g){ Object.assign(g.ev, resuelto); });
       fusionarGrupoDuplicado(grupo);
     }
   });
