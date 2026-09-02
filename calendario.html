@@ -2560,6 +2560,18 @@ function loadFile(file) {
         rows=XLSX.utils.sheet_to_json(wb.Sheets[best],{defval:'',raw:false});
       } else {
         const wb=XLSX.read(ev.target.result,{type:'binary',raw:false});
+        // Reporte de fallas de comunicación (SIM/telemedida): trae hojas
+        // "ordenes" (fecha/aliado/zona por orden) + "detalle_puntos" (un
+        // punto/medidor por fila, con dirección y si está comunicando).
+        // No tiene columna de "estado" ni una sola hoja plana, así que la
+        // heurística genérica de "la hoja con más filas" elegiría la hoja
+        // de resumen por error — se detecta por nombre y se procesa aparte.
+        const hojaOrdenes = wb.SheetNames.find(n=>nrm(n).includes('orden'));
+        const hojaPuntos = wb.SheetNames.find(n=>nrm(n).includes('detalle')||nrm(n).includes('punto'));
+        if(hojaOrdenes && hojaPuntos){
+          procesarReporteFallasComunicacion(wb, hojaOrdenes, hojaPuntos, file.name);
+          return;
+        }
         let best=wb.SheetNames[0],bestN=0;
         wb.SheetNames.forEach(n=>{const r=XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:'',raw:false});if(r.length>bestN){bestN=r.length;best=n;}});
         rows=XLSX.utils.sheet_to_json(wb.Sheets[best],{defval:'',raw:false});
@@ -2573,6 +2585,64 @@ function loadFile(file) {
   };
   if(ext==='csv') reader.readAsText(file,'utf-8');
   else reader.readAsBinaryString(file);
+}
+
+// Convierte el reporte de fallas de comunicación (hojas "ordenes" +
+// "detalle_puntos") al formato de columnas que ya reconoce processExcelRows,
+// reutilizando toda su lógica de fusión/deduplicación en vez de duplicarla.
+// Cada FRT (código de medidor) es un punto de servicio propio, así que se
+// usa directamente como ASSIGNEE_ID — ya viene limpio, sin depender de la
+// dirección para distinguir apartamentos.
+function procesarReporteFallasComunicacion(wb, hojaOrdenes, hojaPuntos, nombre) {
+  var ordenesRows = XLSX.utils.sheet_to_json(wb.Sheets[hojaOrdenes], {defval:'', raw:false});
+  var puntosRows = XLSX.utils.sheet_to_json(wb.Sheets[hojaPuntos], {defval:'', raw:false});
+
+  var infoOrden = {};
+  ordenesRows.forEach(function(r){
+    var oid = String(r['Orden']||r['ORDEN']||'').trim();
+    if(!oid) return;
+    var creada = r['Creada (fecha y hora)']||r['Creada']||'';
+    infoOrden[oid] = {
+      fecha: parseFecha(creada) || dateKey(new Date()),
+      fechaMax: String(r['Fecha máxima']||r['Fecha maxima']||'').trim(),
+    };
+  });
+
+  function esVerdadero(v){
+    var s = String(v).trim().toLowerCase();
+    return v===true || s==='true' || s==='si' || s==='sí' || s==='1';
+  }
+
+  var filas = puntosRows.map(function(r){
+    var oid = String(r['Orden']||'').trim();
+    var info = infoOrden[oid] || {fecha: dateKey(new Date()), fechaMax:''};
+    var comunicando = esVerdadero(r['¿Comunicando?']);
+    var notaPartes = [];
+    var dias = r['Días sin comunicar']||r['Dias sin comunicar'];
+    if(dias!==undefined && dias!=='') notaPartes.push('Días sin comunicar: '+dias);
+    if(info.fechaMax) notaPartes.push('Fecha máxima: '+info.fechaMax);
+    var fallasAnio = r['Fallas (último año)']||r['Fallas (ultimo año)'];
+    if(fallasAnio!==undefined && fallasAnio!=='') notaPartes.push('Fallas último año: '+fallasAnio);
+    var ultimaFalla = r['Última falla']||r['Ultima falla'];
+    if(ultimaFalla) notaPartes.push('Última falla: '+ultimaFalla);
+
+    return {
+      'ID ORDEN': oid,
+      'ASSIGNEE_ID': String(r['FRT']||'').trim(),
+      'ESTADO DE LA ORDEN': comunicando ? 'Ejecutada' : 'Pendiente',
+      'FECHA Y HORA PROGRAMADA': info.fecha,
+      'DIRECCIÓN': String(r['Dirección']||'').trim(),
+      'CIUDAD': String(r['Ciudad']||'').trim(),
+      'DEPARTAMENTO': String(r['Departamento']||'').trim(),
+      'CORREO DEL OPERADOR EN CAMPO': String(r['Aliado responsable']||'').trim(),
+      'MEDIDOR INSTALADO': String(r['Serie medidor']||'').trim(),
+      'ACTIVIDAD PRINCIPAL PROGRAMADA': 'Falla de comunicación',
+      'OBSERVACIÓN GENERAL': notaPartes.join(' · '),
+    };
+  });
+
+  setProg(60, `Procesando ${filas.length} punto(s) de falla...`);
+  processExcelRows(filas, nombre);
 }
 
 function processExcelRows(rows, nombre) {
