@@ -4300,47 +4300,43 @@ function ejecutarDiagnosticoAutomatico(){
     const diag = ejecutarDiagnostico();
     var fusionadas = 0, conflictosResueltos = 0, conflictosPendientes = 0;
 
-    diag.duplicadosExactos.forEach(function(grupo){
-      fusionarGrupoDuplicado(grupo);
-      fusionadas++;
+    // Mismo ID de orden (la única llave real) — cubre lo que antes eran
+    // "duplicados exactos" y "conflictos de aliado" por separado, ahora
+    // unificado: cualquier grupo con el mismo ID se fusiona si el aliado es
+    // resoluble sin ambigüedad (mismo aliado con distinto usuario, aliado
+    // vs enerBit interno, aliado vs "Otro"/correo genérico, o ya aprendido
+    // antes); si hay 2+ aliados con nombre propio genuinamente en
+    // competencia, se deja pendiente para decidir a mano.
+    diag.duplicadosMismoId.forEach(function(grupo){
+      var resuelto = _resolverConflictoAutomatico(grupo);
+      if(resuelto){
+        grupo.forEach(function(g){ Object.assign(g.ev, resuelto); });
+        fusionarGrupoDuplicado(grupo);
+        fusionadas++;
+      } else {
+        conflictosPendientes++;
+      }
     });
     diag.duplicadosIdDistinto.forEach(function(grupo){
       fusionarGrupoDuplicado(grupo);
       fusionadas++;
     });
-    // Conflictos de aliado: ya validado que la enorme mayoría son el mismo
-    // aliado con distinto usuario/correo (o uno de los lados simplemente
-    // sin correo capturado) — no un conflicto real entre 2 empresas. Se
-    // resuelven solos con el mismo criterio que "Limpiar TODO", sin esperar
-    // a que alguien le dé clic; solo quedan pendientes los genuinamente
-    // ambiguos (2+ aliados con nombre propio compitiendo).
-    diag.duplicadas.forEach(function(grupo){
-      var resuelto = _resolverConflictoAutomatico(grupo);
-      if(resuelto){
-        grupo.forEach(function(g){ Object.assign(g.ev, resuelto); });
-        fusionarGrupoDuplicado(grupo);
-        conflictosResueltos++;
-      } else {
-        conflictosPendientes++;
-      }
-    });
 
-    if(fusionadas>0 || conflictosResueltos>0){
+    if(fusionadas>0){
       saveToLocalStorage();
       applyFilters();
       pushFullDatasetToGAS();
     }
 
     var avisos = [];
-    if(fusionadas>0) avisos.push(fusionadas+' tarjeta(s) duplicada(s) fusionada(s) automáticamente');
-    if(conflictosResueltos>0) avisos.push(conflictosResueltos+' conflicto(s) de aliado resuelto(s) solo(s)');
-    if(conflictosPendientes>0) avisos.push(conflictosPendientes+' conflicto(s) de aliado genuinamente ambiguo(s) — revisa "Diagnóstico"');
+    if(fusionadas>0) avisos.push(fusionadas+' orden(es) duplicada(s) fusionada(s) automáticamente');
+    if(conflictosPendientes>0) avisos.push(conflictosPendientes+' orden(es) con aliados genuinamente en conflicto — revisa "Diagnóstico"');
     if(diag.atrasadas.length>0) avisos.push(diag.atrasadas.length+' OS pendiente(s) atrasada(s)');
     if(diag.sobrecarga.length>0) avisos.push(diag.sobrecarga.length+' técnico(s)/día con posible sobrecarga');
     if(diag.patrones.length>0) avisos.push(diag.patrones.length+' patrón(es) de cancelaciones repetidas');
 
     if(avisos.length>0){
-      toast('🔍 Diagnóstico: '+avisos.join(' · '), (fusionadas>0||conflictosResueltos>0||conflictosPendientes>0)?'err':'ok');
+      toast('🔍 Diagnóstico: '+avisos.join(' · '), (fusionadas>0||conflictosPendientes>0)?'err':'ok');
     }
   } catch(err) {
     console.error('Error en ejecutarDiagnosticoAutomatico:', err);
@@ -4361,6 +4357,24 @@ function direccionEsValida(dir) {
 function ejecutarDiagnostico(){
   const hoy = new Date(); hoy.setHours(0,0,0,0);
   const atrasadas=[]; const porDireccion={}; const porTecnicoDia={}; const porAliadoTipo={}; const porSitioFecha={};
+
+  // Desde el cambio de arquitectura, el ID de orden es la ÚNICA identidad
+  // de una tarjeta — así que CUALQUIER grupo de 2+ tarjetas con el mismo ID
+  // (sin importar dirección, fecha o aliado) debe fusionarse en una. Esto
+  // atrapa duplicados que quedaron de antes de ese cambio, o que llegaron
+  // de fuentes distintas (ej. reporte general + reporte de fallas de
+  // comunicación) antes de que el importador los reconociera como lo mismo.
+  var porOidSolo = {};
+  Object.entries(osIdx).forEach(function(entry){
+    var fecha = entry[0];
+    entry[1].forEach(function(ev){
+      if(!ev.oid) return;
+      var k = nrm(ev.oid);
+      if(!porOidSolo[k]) porOidSolo[k] = [];
+      porOidSolo[k].push({ev:ev, fecha:fecha});
+    });
+  });
+  var duplicadosMismoId = Object.values(porOidSolo).filter(function(g){ return g.length>1; });
 
   // Direcciones reales conocidas por orden (en TODO lo cargado), para tratar
   // "No registra"/"Sin registro"/etc. como "sin dirección" al agrupar, en
@@ -4503,7 +4517,7 @@ function ejecutarDiagnostico(){
     .sort(function(a,b){ return b.items.length-a.items.length; });
 
   atrasadas.sort(function(a,b){ return b.diasAtraso-a.diasAtraso; });
-  return { atrasadas:atrasadas, duplicadas:duplicadas, duplicadosExactos:duplicadosExactos, duplicadosIdDistinto:duplicadosIdDistinto, sobrecarga:sobrecarga, patrones:patrones, fallasComunicacion:fallasComunicacion };
+  return { atrasadas:atrasadas, duplicadas:duplicadas, duplicadosExactos:duplicadosExactos, duplicadosIdDistinto:duplicadosIdDistinto, duplicadosMismoId:duplicadosMismoId, sobrecarga:sobrecarga, patrones:patrones, fallasComunicacion:fallasComunicacion };
 }
 
 // ── Notas listas para copiar (WhatsApp/correo al aliado) ──
@@ -4560,9 +4574,21 @@ function fusionarGrupoDuplicado(grupo){
     if(g.ev.nt_m && g.ev.nt_m !== mejor.ev.nt_m) notasExtra.push(g.ev.nt_m);
     if(!mejor.ev.mat && g.ev.mat) mejor.ev.mat = g.ev.mat;
     if(!mejor.ev.em_m && g.ev.em_m) mejor.ev.em_m = g.ev.em_m;
+    if(!mejor.ev.medidor && g.ev.medidor) mejor.ev.medidor = g.ev.medidor;
     if(g.ev.mts && g.ev.mts.length){
       mejor.ev.mts = mejor.ev.mts || [];
       g.ev.mts.forEach(function(m){ if(mejor.ev.mts.indexOf(m)===-1) mejor.ev.mts.push(m); });
+    }
+    // Misma orden, distinto punto (dirección y/o medidor) — se guarda el
+    // detalle del punto que se descarta como principal, igual que ya hace
+    // el importador al fusionar filas nuevas de la misma orden.
+    if(g.ev.oid === mejor.ev.oid && direccionEsValida(g.ev.dir) && g.ev.dir !== mejor.ev.dir){
+      var puntoExtra = g.ev.dir + (g.ev.medidor ? ' (medidor: '+g.ev.medidor+')' : '');
+      if(notasExtra.indexOf(puntoExtra)===-1 && !notasExtra.some(function(n){return n.indexOf(g.ev.dir)!==-1;})){
+        notasExtra.push('📍 '+puntoExtra);
+      }
+    } else if(g.ev.oid === mejor.ev.oid && g.ev.medidor && g.ev.medidor !== mejor.ev.medidor){
+      notasExtra.push('🔌 Medidor adicional: '+g.ev.medidor);
     }
     // Si se descarta una orden COMPLETA con un ID distinto (no una copia de
     // la misma orden), se deja constancia en la nota: cuál ID se descartó,
@@ -4580,7 +4606,10 @@ function fusionarGrupoDuplicado(grupo){
     if(arr) osIdx[g.fecha] = arr.filter(function(e){ return e!==g.ev; });
   });
   if(notasExtra.length){
-    mejor.ev.nt_m = mejor.ev.nt_m ? [mejor.ev.nt_m].concat(notasExtra).join(' | ') : notasExtra.join(' | ');
+    var hayVariosPuntos = notasExtra.some(function(n){ return n.indexOf('📍')===0; });
+    var aviso = hayVariosPuntos ? '⚠️ Esta orden cubre varios puntos/apartamentos — el estado que ves aplica a TODA la orden, no a cada uno por separado.' : null;
+    var partes = (aviso ? [aviso] : []).concat(mejor.ev.nt_m ? [mejor.ev.nt_m] : []).concat(notasExtra);
+    mejor.ev.nt_m = partes.join(' | ');
   }
 }
 
@@ -4608,6 +4637,83 @@ async function elegirAliadoCorrectoAsst(idx, emailElegido){
   applyFilters();
   if(selDate) renderPaneContent();
   toast('✅ Aliado corregido a "'+(correcto.al||correcto.em)+'" y aprendido para la próxima carga','ok');
+  renderAsstDiagnostico();
+  pushFullDatasetToGAS();
+}
+
+// ── Acciones sobre "Órdenes duplicadas (mismo ID)" ──────────────
+async function fusionarMismoIdAsst(idx){
+  const diag = ejecutarDiagnostico();
+  const grupo = diag.duplicadosMismoId[idx];
+  if(!grupo) return;
+  const resuelto = _resolverConflictoAutomatico(grupo);
+  if(!resuelto){ toast('Este grupo necesita que elijas el aliado primero','err'); return; }
+  grupo.forEach(function(g){ Object.assign(g.ev, resuelto); });
+  fusionarGrupoDuplicado(grupo);
+  saveToLocalStorage();
+  applyFilters();
+  if(selDate) renderPaneContent();
+  toast('✅ Orden fusionada en 1 tarjeta','ok');
+  renderAsstDiagnostico();
+  pushFullDatasetToGAS();
+}
+
+async function elegirAliadoMismoIdAsst(idx, emailElegido){
+  const diag = ejecutarDiagnostico();
+  const grupo = diag.duplicadosMismoId[idx];
+  if(!grupo) return;
+  const candidato = grupo.find(function(g){ return (g.ev.em||'')===emailElegido; });
+  if(!candidato) return;
+  const correcto = {em: candidato.ev.em, al: candidato.ev.al, op: candidato.ev.op, tec: candidato.ev.tec};
+  grupo.forEach(function(g){ Object.assign(g.ev, correcto); });
+  fusionarGrupoDuplicado(grupo);
+  // Aprender por ID de orden — la próxima vez que llegue esta misma orden
+  // con el aliado equivocado, se corrige sola.
+  const primero = grupo[0].ev;
+  correccionesAprendidas.aliados[_claveAliadoAprendido(primero.oid, primero.dir)] = correcto;
+  guardarCorreccionesAprendidas();
+  saveToLocalStorage();
+  applyFilters();
+  if(selDate) renderPaneContent();
+  toast('✅ Aliado corregido a "'+(correcto.al||correcto.em)+'" y aprendido para la próxima carga','ok');
+  renderAsstDiagnostico();
+  pushFullDatasetToGAS();
+}
+
+async function cambiarEstadoMismoIdAsst(idx){
+  const diag = ejecutarDiagnostico();
+  const grupo = diag.duplicadosMismoId[idx];
+  if(!grupo) return;
+  const nuevoEstado = document.getElementById('mid-est-'+idx)?.value;
+  if(!nuevoEstado) return;
+  // Fusiona el grupo (rescatando aliado/notas/materiales de todas las
+  // copias) y además fuerza el estado que elegiste, en vez del que hubiera
+  // ganado por prioridad automática.
+  fusionarGrupoDuplicado(grupo);
+  const sobreviviente = Object.values(osIdx).flat().find(function(e){ return grupo.some(function(g){ return g.ev===e; }); });
+  if(sobreviviente) sobreviviente.em_m = nuevoEstado;
+  saveToLocalStorage();
+  applyFilters();
+  if(selDate) renderPaneContent();
+  toast('✅ Orden fusionada con estado forzado a "'+(ST[nuevoEstado]?ST[nuevoEstado].label:nuevoEstado)+'"','ok');
+  renderAsstDiagnostico();
+  pushFullDatasetToGAS();
+}
+
+async function eliminarGrupoMismoIdAsst(idx){
+  const diag = ejecutarDiagnostico();
+  const grupo = diag.duplicadosMismoId[idx];
+  if(!grupo) return;
+  if(!confirm('Se van a eliminar TODAS las '+grupo.length+' tarjetas de esta orden (no se fusiona, se borra por completo). Esto no se puede deshacer. ¿Continuar?')) return;
+  grupo.forEach(function(g){
+    var arr = osIdx[g.fecha];
+    if(arr) osIdx[g.fecha] = arr.filter(function(e){ return e!==g.ev; });
+    if(arr && !arr.length) delete osIdx[g.fecha];
+  });
+  saveToLocalStorage();
+  applyFilters();
+  if(selDate) renderPaneContent();
+  toast('🗑️ Orden eliminada por completo','ok');
   renderAsstDiagnostico();
   pushFullDatasetToGAS();
 }
@@ -4671,6 +4777,13 @@ function _resolverConflictoAutomatico(grupo){
   });
   var claves = Object.keys(porAliado);
 
+  // Todo el grupo ya comparte el mismo aliado (genérico o no) — no hay
+  // ningún conflicto que resolver, se fusiona directo con ese aliado.
+  if(claves.length<=1){
+    var unico = porAliado[claves[0]] || primero;
+    return {em: unico.em, al: unico.al, op: unico.op, tec: unico.tec};
+  }
+
   // Si hay EXACTAMENTE un aliado "con nombre propio" (no genérico) entre
   // todos los presentes, gana ese — sin importar cuántas variantes
   // genéricas (Otro, correo personal, enerBit) haya alrededor.
@@ -4700,31 +4813,28 @@ async function limpiarTodoAsst(){
   const diag = ejecutarDiagnostico();
 
   // Contar de antemano (sin mutar nada todavía) para el mensaje de confirmación.
-  const nExactos = diag.duplicadosExactos.length;
   const nIdDistinto = diag.duplicadosIdDistinto.length;
-  var nConflictosResueltos = 0, nConflictosSinAprendizaje = 0;
-  diag.duplicadas.forEach(function(grupo){
-    if(_resolverConflictoAutomatico(grupo)) nConflictosResueltos++;
+  var nMismoIdResuelto = 0, nConflictosSinAprendizaje = 0;
+  diag.duplicadosMismoId.forEach(function(grupo){
+    if(_resolverConflictoAutomatico(grupo)) nMismoIdResuelto++;
     else nConflictosSinAprendizaje++;
   });
-  const total = nExactos + nIdDistinto + nConflictosResueltos;
+  const total = nIdDistinto + nMismoIdResuelto;
 
   if(total===0){
     toast(nConflictosSinAprendizaje>0
-      ? 'No hay nada seguro para fusionar automáticamente — quedan '+nConflictosSinAprendizaje+' conflicto(s) de aliado que necesitan tu decisión manual'
+      ? 'No hay nada seguro para fusionar automáticamente — quedan '+nConflictosSinAprendizaje+' orden(es) con aliados en conflicto que necesitan tu decisión manual'
       : 'No encontré nada para limpiar 🎉', 'ok');
     return;
   }
   if(!confirm('Se van a fusionar '+total+' grupo(s) de tarjetas duplicadas:\n'+
-    '• '+nExactos+' duplicados exactos (mismo aliado)\n'+
+    '• '+nMismoIdResuelto+' con el mismo ID de orden (mismo aliado, distinto usuario, o ya aprendido antes)\n'+
     '• '+nIdDistinto+' con ID de orden distinto (misma dirección/fecha/tipo)\n'+
-    '• '+nConflictosResueltos+' conflictos de aliado resueltos automáticamente (enerBit vs. un solo aliado externo, o ya aprendidos antes)\n'+
-    (nConflictosSinAprendizaje>0 ? '\n'+nConflictosSinAprendizaje+' conflicto(s) genuinamente ambiguos (2+ aliados externos distintos) quedan pendientes para revisar a mano.\n' : '')+
+    (nConflictosSinAprendizaje>0 ? '\n'+nConflictosSinAprendizaje+' orden(es) con aliados genuinamente en conflicto (2+ aliados con nombre propio) quedan pendientes para revisar a mano.\n' : '')+
     '\nEsto afecta a todos los colaboradores y no se puede deshacer. ¿Continuar?')) return;
 
-  diag.duplicadosExactos.forEach(function(grupo){ fusionarGrupoDuplicado(grupo); });
   diag.duplicadosIdDistinto.forEach(function(grupo){ fusionarGrupoDuplicado(grupo); });
-  diag.duplicadas.forEach(function(grupo){
+  diag.duplicadosMismoId.forEach(function(grupo){
     var resuelto = _resolverConflictoAutomatico(grupo);
     if(resuelto){
       grupo.forEach(function(g){ Object.assign(g.ev, resuelto); });
@@ -4735,7 +4845,7 @@ async function limpiarTodoAsst(){
   applyFilters();
   if(selDate) renderPaneContent();
   saveToLocalStorage();
-  toast('✅ '+total+' grupo(s) fusionado(s)'+(nConflictosSinAprendizaje>0?' · '+nConflictosSinAprendizaje+' conflicto(s) quedan para revisar a mano':''),'ok');
+  toast('✅ '+total+' grupo(s) fusionado(s)'+(nConflictosSinAprendizaje>0?' · '+nConflictosSinAprendizaje+' orden(es) quedan para revisar a mano':''),'ok');
   renderAsstDiagnostico();
   pushFullDatasetToGAS();
 }
@@ -4804,7 +4914,7 @@ function renderDuplicadosHTML(){
 function renderAsstDiagnostico(){
   const body=document.getElementById('asst-body');
   const diag = ejecutarDiagnostico();
-  const atrasadas=diag.atrasadas, duplicadas=diag.duplicadas, duplicadosExactos=diag.duplicadosExactos, duplicadosIdDistinto=diag.duplicadosIdDistinto, sobrecarga=diag.sobrecarga, patrones=diag.patrones, fallasComunicacion=diag.fallasComunicacion;
+  const atrasadas=diag.atrasadas, duplicadas=diag.duplicadas, duplicadosExactos=diag.duplicadosExactos, duplicadosIdDistinto=diag.duplicadosIdDistinto, duplicadosMismoId=diag.duplicadosMismoId, sobrecarga=diag.sobrecarga, patrones=diag.patrones, fallasComunicacion=diag.fallasComunicacion;
   let html='';
 
   html += '<div style="margin-bottom:10px"><button class="btn btn-primary" style="width:100%" onclick="limpiarTodoAsst()">🧹⚡ Limpiar TODO lo seguro de una vez</button></div>';
@@ -4847,47 +4957,44 @@ function renderAsstDiagnostico(){
     if(atrasadas.length>25) html += '<div class="asst-empty">…y '+(atrasadas.length-25)+' más</div>';
   }
 
-  html += '<div class="asst-section-title">🔁 Posibles duplicados (misma orden+dirección, distinto aliado) ('+duplicadas.length+')</div>';
-  if(!duplicadas.length){
-    html += '<div class="asst-empty">No encontré posibles duplicados</div>';
+  html += '<div class="asst-section-title">🆔 Órdenes duplicadas (mismo ID) ('+duplicadosMismoId.length+')</div>';
+  if(!duplicadosMismoId.length){
+    html += '<div class="asst-empty">No hay órdenes con el ID repetido 🎉</div>';
   } else {
-    duplicadas.slice(0,20).forEach(function(grupo, idx){
+    html += '<div class="asst-empty" style="text-align:left">El ID de orden es la única identidad de una tarjeta — cualquier grupo aquí comparte el mismo ID y debe quedar en una sola tarjeta.</div>';
+    duplicadosMismoId.slice(0,20).forEach(function(grupo, idx){
       const primero=grupo[0];
-      const aliados=[...new Set(grupo.map(function(g){return g.ev.al||g.ev.em||'';}))];
+      const aliados=[...new Set(grupo.map(function(g){return g.ev.al||g.ev.em||'sin correo';}))];
+      const resuelto = _resolverConflictoAutomatico(grupo);
       const nota = notaDuplicado(grupo).replace(/'/g,"\\'");
-      const botonesAliado = [...new Map(grupo.map(function(g){return [g.ev.em, g];})).values()]
-        .map(function(g){
-          return '<button class="btn btn-sm btn-secondary" style="margin-top:4px;margin-right:4px" '+
-            'onclick="event.stopPropagation();elegirAliadoCorrectoAsst('+idx+',\''+(g.ev.em||'').replace(/'/g,"\\'")+'\')">'+
-            '✓ Es '+(g.ev.al||g.ev.em||'sin correo')+'</button>';
-        }).join('');
+      var acciones;
+      if(resuelto){
+        acciones = '<button class="btn btn-sm btn-primary" style="margin-top:4px;margin-right:4px" onclick="event.stopPropagation();fusionarMismoIdAsst('+idx+')">🧹 Fusionar (usa '+(resuelto.al||resuelto.em||'el disponible')+')</button>';
+      } else {
+        acciones = [...new Map(grupo.map(function(g){return [g.ev.em, g];})).values()]
+          .map(function(g){
+            return '<button class="btn btn-sm btn-secondary" style="margin-top:4px;margin-right:4px" '+
+              'onclick="event.stopPropagation();elegirAliadoMismoIdAsst('+idx+',\''+(g.ev.em||'').replace(/'/g,"\\'")+'\')">'+
+              '✓ Es '+(g.ev.al||g.ev.em||'sin correo')+'</button>';
+          }).join('');
+      }
+      const estOpts = ['pending','reprog','cancel','done'].map(function(k){
+        return '<option value="'+k+'">'+(ST[k]?ST[k].label:k)+'</option>';
+      }).join('');
       html += '<div class="asst-finding">'+
         '<div onclick="irYResaltarOS(\''+primero.ev.oid+'\',\''+encodeURIComponent(primero.ev.aid)+'\',\''+primero.fecha+'\')" style="cursor:pointer">'+
         '<b>'+grupo.length+' tarjetas</b> — '+(primero.ev.tc||'')+' · '+(primero.ev.ci||'')+
         '<div style="color:var(--gy);font-size:.74rem">'+(primero.ev.dir||'').slice(0,60)+' — aliados: '+aliados.join(', ')+'</div></div>'+
-        '<div>'+botonesAliado+'</div>'+
-        '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();copiarNotaAsst(this,\''+nota+'\')">📋 Copiar nota</button>'+
+        '<div>'+acciones+'</div>'+
+        '<div style="display:flex;gap:4px;align-items:center;margin-top:4px;flex-wrap:wrap">'+
+          '<select id="mid-est-'+idx+'" style="font-size:.7rem;border:1px solid var(--bd);border-radius:4px;padding:2px">'+estOpts+'</select>'+
+          '<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();cambiarEstadoMismoIdAsst('+idx+')">Fusionar y forzar este estado</button>'+
+          '<button class="btn btn-sm btn-ghost" style="color:var(--rd)" onclick="event.stopPropagation();eliminarGrupoMismoIdAsst('+idx+')">🗑️ Eliminar todas</button>'+
+          '<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();copiarNotaAsst(this,\''+nota+'\')">📋 Copiar nota</button>'+
+        '</div>'+
       '</div>';
     });
-    if(duplicadas.length>20) html += '<div class="asst-empty">…y '+(duplicadas.length-20)+' más</div>';
-  }
-
-  html += '<div class="asst-section-title">🧹 Duplicados exactos — bug de sincronización, mismo aliado ('+duplicadosExactos.length+')</div>';
-  if(!duplicadosExactos.length){
-    html += '<div class="asst-empty">No encontré duplicados exactos</div>';
-  } else {
-    html += '<div class="asst-empty" style="text-align:left">Misma orden+dirección+aliado con varias tarjetas — no es una reasignación real, es acumulación por cambios técnicos. Se puede limpiar de forma segura (conserva la de estado más avanzado).</div>';
-    html += '<div style="margin:8px 0"><button class="btn btn-primary btn-sm" onclick="limpiarDuplicadosExactosAsst()">🧹 Limpiar todos los duplicados exactos</button></div>';
-    duplicadosExactos.slice(0,15).forEach(function(grupo, idx){
-      const primero=grupo[0];
-      html += '<div class="asst-finding">'+
-        '<div onclick="irYResaltarOS(\''+primero.ev.oid+'\',\''+encodeURIComponent(primero.ev.aid)+'\',\''+primero.fecha+'\')" style="cursor:pointer">'+
-        '<b>'+grupo.length+' tarjetas</b> — '+(primero.ev.tc||'')+' · '+(primero.ev.ci||'')+
-        '<div style="color:var(--gy);font-size:.74rem">'+(primero.ev.dir||'').slice(0,60)+'</div></div>'+
-        '<button class="btn btn-sm btn-ghost" style="margin-top:4px" onclick="event.stopPropagation();fusionarUnGrupoAsst('+idx+')">Fusionar este grupo</button>'+
-      '</div>';
-    });
-    if(duplicadosExactos.length>15) html += '<div class="asst-empty">…y '+(duplicadosExactos.length-15)+' más — usa "Limpiar todos"</div>';
+    if(duplicadosMismoId.length>20) html += '<div class="asst-empty">…y '+(duplicadosMismoId.length-20)+' más — usa "Limpiar TODO" arriba</div>';
   }
 
   html += '<div class="asst-section-title">🆔 Mismo sitio+fecha con ID de orden DISTINTO ('+duplicadosIdDistinto.length+')</div>';
@@ -5758,7 +5865,7 @@ try {
 function guardarCorreccionesAprendidas(){
   try { localStorage.setItem('cal_learn', JSON.stringify(correccionesAprendidas)); } catch(e){}
 }
-function _claveAliadoAprendido(oid, dir){ return oid+'|'+nrm(dir||''); }
+function _claveAliadoAprendido(oid, dir){ return nrm(oid); }
 
 // ══ MATERIALES ══════════════════════════════════════════════
 // El estado de material es UNO SOLO por tarjeta (ev.mat, ver MAT arriba),
