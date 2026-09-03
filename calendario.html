@@ -2709,7 +2709,17 @@ function processExcelRows(rows, nombre) {
     matCant:    findCol(['MATERIAL_CANTIDAD','CANTIDAD MATERIAL','material_quantity','cantidad_material','QUANTITY']),
     matUnidad:  findCol(['MATERIAL_UNIDAD','UNIDAD MATERIAL','material_unit','unidad_material','UNIT']),
     matCategoria: findCol(['MATERIAL_CATEGORIA','CATEGORIA MATERIAL','material_category','categoria_material']),
+    frt:    findCol(['FRT','frt','FRONTERA']),
+    fechaLimite: findCol(['FECHA MÁXIMA','FECHA MAXIMA','FECHA LIMITE','FECHA LÍMITE','due_date','deadline','fecha_limite']),
+    idModem: findCol(['ID MODEM','ID_MODEM','MODEM','id modem']),
   };
+
+  // Cualquier columna del archivo que NO se haya reconocido como alguno de
+  // los campos de arriba (ID, aliado, geografía, medidor/FRT, dirección,
+  // etc.) se guarda igual — se anexa a la nota como "Columna: valor", para
+  // que ningún dato del Excel se pierda sin importar qué tan distinta sea
+  // su estructura de columnas.
+  var camposUsados = new Set(Object.values(COL).filter(Boolean));
 
   // Si el archivo trae columnas de material estructuradas (una fila por
   // material, repitiendo la misma OS), este flag activa que se acumulen
@@ -2885,8 +2895,31 @@ function processExcelRows(rows, nombre) {
       co:  getVal(row, COL.co, 140),
       ti:  parseTime(rawF),
       nt_m:prev.nt_m||'', mat:prev.mat||'',
-      medidor: getVal(row, COL.medidor, 40)
+      medidor: getVal(row, COL.medidor, 40) || getVal(row, COL.frt, 40)
     };
+
+    // Cualquier columna del archivo que no se haya mapeado a un campo
+    // conocido (fecha límite, ID de módem, o cualquier otra que este
+    // reporte en particular traiga) se guarda en la nota — así funciona
+    // con cualquier estructura de Excel sin perder información.
+    if (!prev.nt_m) {
+      var extras = [];
+      var fechaLimiteVal = getVal(row, COL.fechaLimite, 40);
+      if (fechaLimiteVal) extras.push('Fecha límite: ' + fechaLimiteVal);
+      var idModemVal = getVal(row, COL.idModem, 40);
+      if (idModemVal) extras.push('ID módem: ' + idModemVal);
+      Object.keys(row).forEach(function(colName){
+        if (camposUsados.has(colName)) return;
+        var val = String(row[colName]==null ? '' : row[colName]).trim();
+        if (!val) return;
+        var valN = nrm(val);
+        if (['nan','null','undefined','no aplica','n a','na','sin dato','sin datos','-'].indexOf(valN)!==-1) return;
+        extras.push(colName + ': ' + val.substring(0,100));
+      });
+      if (extras.length) {
+        ev.nt_m = extras.slice(0,6).join(' · ');
+      }
+    }
 
     // Si esta OS cubre varios medidores/direcciones a la vez (ver arriba),
     // se usó la primera como dirección de la tarjeta — las demás quedan
