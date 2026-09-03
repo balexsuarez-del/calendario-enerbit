@@ -3575,6 +3575,27 @@ function renderOSList(key) {
   evs=[...evs].sort((a,b)=>(ORD[calcStatus(a)]??4)-(ORD[calcStatus(b)]??4));
   const list=document.getElementById('os-list');
   if(!list) return;
+
+  // Si hay 2 o 3 departamentos seleccionados en el filtro, mostrarlos cada
+  // uno en su propia columna, lado a lado, para comparar de un vistazo en
+  // vez de mezclarlos en una sola lista.
+  const deptosSel = msData.dep ? [...msData.dep.sel] : [];
+  if(deptosSel.length>=2 && deptosSel.length<=3){
+    list.innerHTML = '<div style="display:flex;gap:10px;align-items:flex-start">' +
+      deptosSel.map(function(dep){
+        var evsDep = evs.filter(function(ev){ return ev.sta===dep; });
+        var co = depColor(dep);
+        return '<div style="flex:1;min-width:0;border:1px solid var(--bd);border-radius:10px;overflow:hidden;display:flex;flex-direction:column">'+
+          '<div style="background:'+co.bar+';color:#fff;padding:8px 10px;font-weight:700;font-size:.8rem">'+dep+' ('+evsDep.length+')</div>'+
+          '<div style="padding:8px;max-height:70vh;overflow-y:auto">'+
+          (evsDep.length ? evsDep.map(function(ev){ return osCardHTML(ev,key); }).join('') : '<div class="empty-msg">Sin órdenes</div>')+
+          '</div>'+
+        '</div>';
+      }).join('') +
+    '</div>';
+    return;
+  }
+
   if(!evs.length){list.innerHTML=`<div class="empty-msg">${q?'Sin resultados para "'+q+'"':' Sin órdenes para este día.'}</div>`;return;}
   list.innerHTML=evs.map(ev=>osCardHTML(ev,key)).join('');
 }
