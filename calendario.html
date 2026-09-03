@@ -374,6 +374,7 @@ textarea.fi{resize:vertical;min-height:60px}
   border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.35);z-index:401;display:none;
   flex-direction:column;overflow:hidden;font-size:.85rem}
 .asst-panel.open{display:flex}
+.asst-panel.expandido{width:94vw;max-width:1400px;height:90vh;max-height:90vh;top:5vh!important;left:3vw!important;right:auto!important;bottom:auto!important}
 .asst-hdr{background:var(--pp);color:#fff;padding:12px 14px;display:flex;align-items:center;
   justify-content:space-between;font-weight:700}
 .asst-hdr button{background:none;border:none;color:#fff;font-size:1.1rem;cursor:pointer;opacity:.85}
@@ -823,7 +824,10 @@ textarea.fi{resize:vertical;min-height:60px}
 <div class="asst-panel" id="asst-panel">
   <div class="asst-hdr">
     <span>🤖 Asistente del calendario</span>
-    <button onclick="toggleAsistente()">✕</button>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button onclick="toggleExpandirAsistente()" id="asst-expand-btn" title="Agrandar ventana">⛶</button>
+      <button onclick="toggleAsistente()">✕</button>
+    </div>
   </div>
   <div class="asst-tabs">
     <div class="asst-tab active" data-tab="preguntar" onclick="switchAsstTab('preguntar')">Preguntar</div>
@@ -1860,9 +1864,8 @@ function pintarCortes(filtroOp, filtroCirc) {
             setPrimeraDeteccion(key, finISO);
             detectado = {fin: finISO, ts: Date.now()};
           }
-          // Se queda visible en verde 24 horas desde que se detecto como
-          // resuelto; despues de eso se oculta del mapa.
-          if (Date.now() - detectado.ts > 24 * 60 * 60 * 1000) return;
+          // A los 10 minutos de detectado como resuelto, se oculta del mapa
+          if (Date.now() - detectado.ts > 10 * 60 * 1000) return;
           estado = 'resuelto';
           esAutoResuelto = true;
         }
@@ -1890,7 +1893,7 @@ function pintarCortes(filtroOp, filtroCirc) {
       'Horario: '+(e.inicio||'—')+' – '+(e.fin||'—')+'<br>'+
       'Barrios: '+(e.barrios||[]).join(', ')+'<br>'+
       '<span style="color:#6B7280">'+(e.detalle||'')+'</span><br>'+
-      (esAutoResuelto ? '<span style="color:var(--am);font-size:11px">Marcado como resuelto automaticamente al pasar la hora de fin. Se ocultara del mapa en 24 horas si nadie confirma que continua.</span><br>' : '')+
+      (esAutoResuelto ? '<span style="color:var(--am);font-size:11px">Marcado como resuelto automaticamente al pasar la hora de fin. Se ocultara del mapa en 10 min si nadie confirma que continua.</span><br>' : '')+
       '<button id="'+idPopup+'" style="margin-top:6px;background:#501C7C;color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer">📍 Ver barrios en el mapa</button>'+botonContinua
     );
     m.on('click', function() {
@@ -2032,7 +2035,7 @@ setInterval(function(){
 }, 60 * 60 * 1000);
 
 // Repintado cada 30s (solo si el overlay esta visible) para que la
-// auto-transicion a "resuelto" y el auto-ocultado a las 24h ocurran
+// auto-transicion a "resuelto" y el auto-ocultado a los 10 min ocurran
 // solos, sin depender de que alguien refresque manualmente.
 setInterval(function(){
   var ov = document.getElementById('cortes-overlay');
@@ -4085,7 +4088,18 @@ function toggleAsistente(event){
   if(opening){
     panel.style.right='24px'; panel.style.bottom='90px'; panel.style.left='auto'; panel.style.top='auto';
     switchAsstTab(asstTab);
+  } else {
+    panel.classList.remove('expandido');
+    document.getElementById('asst-expand-btn').textContent = '⛶';
   }
+}
+
+function toggleExpandirAsistente(){
+  const panel = document.getElementById('asst-panel');
+  if(!panel) return;
+  const expandiendo = !panel.classList.contains('expandido');
+  panel.classList.toggle('expandido');
+  document.getElementById('asst-expand-btn').textContent = expandiendo ? '🗗' : '⛶';
 }
 
 function switchAsstTab(tab){
@@ -4100,7 +4114,11 @@ function switchAsstTab(tab){
   }
   else if(tab==='exportar') renderAsstExportar();
   else if(tab==='config') renderAsstConfig();
-  else if(tab==='tabla') renderAsstTabla();
+  else if(tab==='tabla'){
+    document.getElementById('asst-panel')?.classList.add('expandido');
+    const btn = document.getElementById('asst-expand-btn'); if(btn) btn.textContent='🗗';
+    renderAsstTabla();
+  }
   else renderAsstMaterial();
 }
 
