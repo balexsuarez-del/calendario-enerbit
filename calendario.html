@@ -2988,7 +2988,13 @@ function processExcelRows(rows, nombre) {
         var exEsMasLarga = ex.dir.length > (ev.dir||'').length;
         var direccionQueSeUsa = exEsMasLarga ? ex.dir : ev.dir;
         var direccionQueSeGuarda = exEsMasLarga ? ev.dir : ex.dir;
+        var medidorQueSeGuarda = exEsMasLarga ? ev.medidor : ex.medidor;
         ev.dir = direccionQueSeUsa;
+        // Si el punto que se pliega en la nota tenía su propio medidor
+        // (FRT/serial), se guarda junto con la dirección — así la nota
+        // queda con "dirección (medidor: XXXXX)" y no se pierde el dato de
+        // cuál medidor corresponde a cuál punto de la orden.
+        var puntoQueSeGuarda = direccionQueSeGuarda + (medidorQueSeGuarda ? ' (medidor: '+medidorQueSeGuarda+')' : '');
         var notaCombinada = ex.nt_m || '';
         if(ev.nt_m && ev.nt_m !== notaCombinada){
           notaCombinada = notaCombinada ? notaCombinada + ' | ' + ev.nt_m : ev.nt_m;
@@ -2996,17 +3002,27 @@ function processExcelRows(rows, nombre) {
         if(direccionQueSeGuarda && direccionEsValida(direccionQueSeGuarda) && notaCombinada.indexOf(direccionQueSeGuarda)===-1){
           var yaAvisado = notaCombinada.indexOf('cubre varios puntos')!==-1;
           if(!notaCombinada){
-            notaCombinada = '⚠️ Esta orden cubre varios puntos/apartamentos — el estado que ves aplica a TODA la orden, no a cada uno por separado. 📍 También incluye: ' + direccionQueSeGuarda;
+            notaCombinada = '⚠️ Esta orden cubre varios puntos/apartamentos — el estado que ves aplica a TODA la orden, no a cada uno por separado. 📍 También incluye: ' + puntoQueSeGuarda;
           } else if(!yaAvisado){
-            notaCombinada = '⚠️ Esta orden cubre varios puntos/apartamentos — el estado que ves aplica a TODA la orden, no a cada uno por separado. 📍 También incluye: ' + direccionQueSeGuarda + ' | ' + notaCombinada;
+            notaCombinada = '⚠️ Esta orden cubre varios puntos/apartamentos — el estado que ves aplica a TODA la orden, no a cada uno por separado. 📍 También incluye: ' + puntoQueSeGuarda + ' | ' + notaCombinada;
           } else {
-            notaCombinada = notaCombinada + ' | 📍 ' + direccionQueSeGuarda;
+            notaCombinada = notaCombinada + ' | 📍 ' + puntoQueSeGuarda;
           }
         }
         ex.nt_m = notaCombinada;
+      } else if(ex.medidor && ev.medidor && ex.medidor !== ev.medidor){
+        // Misma dirección (o ninguna de las dos válida), pero dos medidores
+        // distintos — ej. 2 medidores en el mismo punto. Se guarda el que
+        // no quedó como principal, para no perderlo.
+        var notaMed = ex.nt_m || ev.nt_m || '';
+        if(notaMed.indexOf(ex.medidor)===-1){
+          notaMed = notaMed ? notaMed + ' | 🔌 Medidor adicional: ' + ex.medidor : '🔌 Medidor adicional: ' + ex.medidor;
+        }
+        ex.nt_m = notaMed;
       }
       ev.em_m=ex.em_m||ev.em_m;
       ev.nt_m=ex.nt_m||ev.nt_m;
+      ev.medidor=ev.medidor||ex.medidor;
       ev.mat=ex.mat||ev.mat;
       // Acumular materiales: si el archivo trae una fila por cada material
       // de la misma OS, se van sumando a la lista en vez de perder las
