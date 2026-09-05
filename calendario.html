@@ -5546,6 +5546,28 @@ function renderAsstTabla(){
   const fDepto = document.getElementById('tabla-depto')?.value || '';
   const fAliado = document.getElementById('tabla-aliado')?.value || '';
   const fMedidor = nrm(document.getElementById('tabla-medidor')?.value || '');
+  const soloInconsistencias = document.getElementById('tabla-solo-inc')?.checked || false;
+
+  // Contar cuántas veces aparece cada ID de orden en TODO lo cargado, para
+  // poder marcar "ID duplicado" fila por fila sin correr el diagnóstico
+  // completo (que es más pesado) en cada tecla que se escribe.
+  var conteoPorOid = {};
+  Object.values(osIdx).flat().forEach(function(e){
+    if(!e.oid) return;
+    var k = nrm(e.oid);
+    conteoPorOid[k] = (conteoPorOid[k]||0)+1;
+  });
+  var hoyStr = dateKey(new Date());
+  function detectarInconsistencias(ev, fecha){
+    var problemas = [];
+    if((conteoPorOid[nrm(ev.oid)]||0) > 1) problemas.push('ID de orden repetido ('+conteoPorOid[nrm(ev.oid)]+' tarjetas)');
+    if(!direccionEsValida(ev.dir)) problemas.push('Sin dirección válida');
+    if(!ev.em) problemas.push('Sin correo de aliado');
+    if(!ev.ci) problemas.push('Sin ciudad');
+    if(!ev.sta) problemas.push('Sin departamento');
+    if(calcStatus(ev)==='pending' && fecha < hoyStr) problemas.push('Pendiente atrasada');
+    return problemas;
+  }
 
   var deptosDisponibles = new Set(), aliadosDisponibles = new Set();
 
@@ -5564,7 +5586,9 @@ function renderAsstTabla(){
       if(fDepto && ev.sta!==fDepto) return;
       if(fAliado && ev.al!==fAliado) return;
       if(fMedidor && !nrm(ev.medidor||'').includes(fMedidor)) return;
-      candidatos.push({ev:ev, fecha:fecha});
+      var problemas = detectarInconsistencias(ev, fecha);
+      if(soloInconsistencias && !problemas.length) return;
+      candidatos.push({ev:ev, fecha:fecha, problemas:problemas});
     });
   });
 
@@ -5581,6 +5605,7 @@ function renderAsstTabla(){
 
   const LIMITE = 300;
   const totalEncontrado = candidatos.length;
+  const totalConProblemas = candidatos.filter(function(c){ return c.problemas.length>0; }).length;
   tablaFilas = candidatos.slice(0, LIMITE);
 
   var html = '<div class="asst-section-title">📊 Tabla editable</div>';
@@ -5590,6 +5615,9 @@ function renderAsstTabla(){
     '<button class="btn btn-ghost btn-sm" onclick="tablaFiltrosVisibles=!tablaFiltrosVisibles;renderAsstTabla()">🔍 Filtros'+(tablaFiltrosVisibles?' ▲':' ▼')+'</button>'+
     '<button class="btn btn-ghost btn-sm" onclick="verTodoTabla()">🔄 Ver todo</button>'+
   '</div>'+
+  '<label style="display:flex;align-items:center;gap:5px;font-size:.74rem;margin-bottom:8px;cursor:pointer;background:'+(totalConProblemas?'#FFF1E6':'var(--bg2)')+';padding:6px 8px;border-radius:6px">'+
+    '<input type="checkbox" id="tabla-solo-inc" onchange="renderAsstTabla()"'+(soloInconsistencias?' checked':'')+'> ⚠️ Mostrar solo inconsistencias ('+totalConProblemas+' encontrada'+(totalConProblemas===1?'':'s')+')'+
+  '</label>'+
   '<div style="display:flex;gap:4px;margin-bottom:8px">'+
     '<input type="text" id="tabla-buscar" placeholder="Buscar por ID, dirección, ciudad, aliado, correo, medidor o nota..." value="'+(document.getElementById('tabla-buscar')?.value||'').replace(/"/g,'&quot;')+'" oninput="renderAsstTabla()" style="flex:1;padding:6px;border:1px solid var(--bd);border-radius:6px;font-size:.78rem;box-sizing:border-box">'+
     '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'tabla-buscar\').value=\'\';renderAsstTabla()" title="Limpiar búsqueda">✕</button>'+
@@ -5630,16 +5658,18 @@ function renderAsstTabla(){
         var label = k===''?'(sin override)':(ST[k]?ST[k].label:k);
         return '<option value="'+k+'"'+((ev.em_m||'')===k?' selected':'')+'>'+label+'</option>';
       }).join('');
+      var tieneProblemas = row.problemas.length>0;
+      var iconoProblema = tieneProblemas ? '<span title="'+row.problemas.join(' · ').replace(/"/g,'&quot;')+'" style="cursor:help">⚠️</span>' : '';
       // Cada celda editable tiene id="tc-FILA-COLUMNA" para poder navegar
       // con las flechas del teclado como en Excel (ver navegarTablaTeclado).
-      html += '<tr style="border-bottom:1px solid var(--bd)" onclick="irYResaltarOS(\''+ev.oid+'\',\''+encodeURIComponent(ev.aid)+'\',\''+row.fecha+'\')" data-fila="'+idx+'">'+
-        '<td style="padding:3px 6px;white-space:nowrap">'+row.fecha+'</td>'+
+      html += '<tr style="border-bottom:1px solid var(--bd)'+(tieneProblemas?';background:#FFF7ED':'')+'" onclick="irYResaltarOS(\''+ev.oid+'\',\''+encodeURIComponent(ev.aid)+'\',\''+row.fecha+'\')" data-fila="'+idx+'">'+
+        '<td style="padding:3px 6px;white-space:nowrap">'+iconoProblema+' '+row.fecha+'</td>'+
         '<td style="padding:3px 6px;white-space:nowrap;font-family:monospace">'+(ev.oid||'').slice(-8)+'</td>'+
         '<td style="padding:2px" onclick="event.stopPropagation()"><select id="tc-'+idx+'-0" onkeydown="navegarTablaTeclado(event,'+idx+',0)" onchange="editarCeldaTabla('+idx+',\'em_m\',this.value)" style="width:100%;font-size:.72rem;border:1px solid var(--bd);border-radius:4px">'+estOpts+'</select></td>'+
-        '<td style="padding:2px" onclick="event.stopPropagation()"><input id="tc-'+idx+'-1" onkeydown="navegarTablaTeclado(event,'+idx+',1)" value="'+(ev.ci||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'ci\',this.value)" style="width:80px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
-        '<td style="padding:2px" onclick="event.stopPropagation()"><input id="tc-'+idx+'-2" onkeydown="navegarTablaTeclado(event,'+idx+',2)" value="'+(ev.sta||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'sta\',this.value)" style="width:80px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
-        '<td style="padding:2px" onclick="event.stopPropagation()"><input id="tc-'+idx+'-3" onkeydown="navegarTablaTeclado(event,'+idx+',3)" value="'+(ev.dir||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'dir\',this.value)" style="width:160px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
-        '<td style="padding:2px" onclick="event.stopPropagation()"><input id="tc-'+idx+'-4" onkeydown="navegarTablaTeclado(event,'+idx+',4)" value="'+(ev.em||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'em\',this.value)" style="width:130px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
+        '<td style="padding:2px" onclick="event.stopPropagation()"><input id="tc-'+idx+'-1" onkeydown="navegarTablaTeclado(event,'+idx+',1)" value="'+(ev.ci||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'ci\',this.value)" style="width:80px;font-size:.72rem;border:1px solid'+(!ev.ci?' #DC2626':' var(--bd)')+';border-radius:4px;padding:2px"></td>'+
+        '<td style="padding:2px" onclick="event.stopPropagation()"><input id="tc-'+idx+'-2" onkeydown="navegarTablaTeclado(event,'+idx+',2)" value="'+(ev.sta||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'sta\',this.value)" style="width:80px;font-size:.72rem;border:1px solid'+(!ev.sta?' #DC2626':' var(--bd)')+';border-radius:4px;padding:2px"></td>'+
+        '<td style="padding:2px" onclick="event.stopPropagation()"><input id="tc-'+idx+'-3" onkeydown="navegarTablaTeclado(event,'+idx+',3)" value="'+(ev.dir||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'dir\',this.value)" style="width:160px;font-size:.72rem;border:1px solid'+(!direccionEsValida(ev.dir)?' #DC2626':' var(--bd)')+';border-radius:4px;padding:2px"></td>'+
+        '<td style="padding:2px" onclick="event.stopPropagation()"><input id="tc-'+idx+'-4" onkeydown="navegarTablaTeclado(event,'+idx+',4)" value="'+(ev.em||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'em\',this.value)" style="width:130px;font-size:.72rem;border:1px solid'+(!ev.em?' #DC2626':' var(--bd)')+';border-radius:4px;padding:2px"></td>'+
         '<td style="padding:2px" onclick="event.stopPropagation()"><input id="tc-'+idx+'-5" onkeydown="navegarTablaTeclado(event,'+idx+',5)" value="'+(ev.medidor||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'medidor\',this.value)" style="width:90px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
         '<td style="padding:2px" onclick="event.stopPropagation()"><input id="tc-'+idx+'-6" onkeydown="navegarTablaTeclado(event,'+idx+',6)" value="'+(ev.nt_m||'').replace(/"/g,'&quot;')+'" onchange="editarCeldaTabla('+idx+',\'nt_m\',this.value)" style="width:160px;font-size:.72rem;border:1px solid var(--bd);border-radius:4px;padding:2px"></td>'+
       '</tr>';
