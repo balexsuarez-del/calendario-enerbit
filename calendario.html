@@ -5530,6 +5530,30 @@ const TABLA_COLS = [
 // marcados para esa columna. Un Set vacío significa "todos" (sin filtro).
 var tablaColFiltros = {};
 var tablaDropdownAbierto = null;
+var tablaValoresPorColumnaCache = {};
+
+function marcarTodosFiltroColumna(col, marcarTodos){
+  if(marcarTodos){
+    delete tablaColFiltros[col];
+  } else {
+    tablaColFiltros[col] = new Set([...(tablaValoresPorColumnaCache[col]||[])]);
+  }
+  renderAsstTabla();
+}
+
+// Filtra las opciones DENTRO del desplegable ya abierto sin volver a
+// renderizar toda la tabla — así no se pierde el desplegable ni la
+// posición del scroll mientras se busca, igual que el buscador del
+// AutoFiltro de Excel.
+function filtrarDropdownTabla(col, texto){
+  var q = nrm(texto);
+  var cont = document.getElementById('tabla-dd-'+col);
+  if(!cont) return;
+  cont.querySelectorAll('.tabla-dd-opcion').forEach(function(label){
+    var texto = nrm(label.textContent);
+    label.style.display = texto.includes(q) ? 'flex' : 'none';
+  });
+}
 
 function valorColumnaTabla(ev, col){
   var v = col==='st' ? calcStatus(ev) : (ev[col] || '');
@@ -5649,6 +5673,9 @@ function renderAsstTabla(){
     var cmp = va<vb?-1:va>vb?1:0;
     return tablaOrdenAsc ? cmp : -cmp;
   });
+  // Guardar los valores por columna a nivel global, para que "Todos"/
+  // "Ninguno" en el desplegable puedan usarlos sin recalcular.
+  tablaValoresPorColumnaCache = valoresPorColumna;
 
   const LIMITE = 300;
   const totalEncontrado = candidatos.length;
@@ -5702,14 +5729,20 @@ function renderAsstTabla(){
           if(tablaDropdownAbierto===c.key){
             var valores = [...(valoresPorColumna[c.key]||[])].sort();
             var excluidos = tablaColFiltros[c.key] || new Set();
-            dropdown = '<div onclick="event.stopPropagation()" style="position:absolute;top:100%;left:0;background:#fff;border:1px solid var(--bd);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.2);padding:8px;z-index:10;min-width:170px;max-height:220px;overflow-y:auto;font-weight:400;text-transform:none;cursor:default">'+
-              '<button class="btn btn-ghost btn-sm" style="font-size:.65rem;padding:2px 6px;margin-bottom:6px;width:100%" onclick="limpiarFiltroColumna(\''+c.key+'\',event)">Quitar filtro (ver todos)</button>'+
+            dropdown = '<div onclick="event.stopPropagation()" style="position:absolute;top:100%;left:0;background:#fff;border:1px solid var(--bd);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.2);padding:8px;z-index:10;min-width:190px;max-height:260px;display:flex;flex-direction:column;font-weight:400;text-transform:none;cursor:default">'+
+              '<input type="text" placeholder="Buscar..." oninput="filtrarDropdownTabla(\''+c.key+'\',this.value)" style="width:100%;padding:4px 6px;margin-bottom:6px;border:1px solid var(--bd);border-radius:4px;font-size:.7rem;box-sizing:border-box">'+
+              '<div style="display:flex;gap:4px;margin-bottom:6px">'+
+                '<button class="btn btn-ghost btn-sm" style="font-size:.62rem;padding:2px 6px;flex:1" onclick="marcarTodosFiltroColumna(\''+c.key+'\',true)">Todos</button>'+
+                '<button class="btn btn-ghost btn-sm" style="font-size:.62rem;padding:2px 6px;flex:1" onclick="marcarTodosFiltroColumna(\''+c.key+'\',false)">Ninguno</button>'+
+              '</div>'+
+              '<div id="tabla-dd-'+c.key+'" style="overflow-y:auto;max-height:170px">'+
               valores.map(function(v){
                 var checked = !excluidos.has(v);
-                return '<label style="display:flex;align-items:center;gap:5px;font-size:.7rem;padding:2px 0;cursor:pointer">'+
-                  '<input type="checkbox" '+(checked?'checked':'')+' onchange="toggleValorFiltroColumna(\''+c.key+'\',\''+String(v).replace(/'/g,"\\'")+'\',this.checked)"> '+etiquetaValorColumna(c.key, v)+
+                return '<label class="tabla-dd-opcion" style="display:flex;align-items:center;gap:5px;font-size:.7rem;padding:2px 0;cursor:pointer">'+
+                  '<input type="checkbox" '+(checked?'checked':'')+' onchange="toggleValorFiltroColumna(\''+c.key+'\',\''+String(v).replace(/'/g,"\\'")+'\',this.checked)"> <span>'+etiquetaValorColumna(c.key, v)+'</span>'+
                 '</label>';
               }).join('')+
+              '</div>'+
             '</div>';
           }
           return '<th style="position:sticky;top:0;background:var(--bg2);padding:4px 6px;white-space:nowrap;border-bottom:1px solid var(--bd);user-select:none;z-index:1">'+
