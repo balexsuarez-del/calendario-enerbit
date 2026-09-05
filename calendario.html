@@ -5996,7 +5996,7 @@ function parseMaterialFromDesc(desc) {
   // mezclaba el final de un dato con el inicio del siguiente. Ahora cada
   // patrón para justo antes de la SIGUIENTE etiqueta conocida (o el final
   // del texto), en vez de a ciegas por longitud.
-  var LIMITE = '(?=\\s*(?:Tel[eé]fono|Necesario|Comunicaci[oó]n|Paneles o cajas|Cable de control|Apertura|Medidor)\\s*:|\\s*Medidor|\\s*$)';
+  var LIMITE = '(?=\\s*(?:Tel[eé]fono|Necesario|Comunicaci[oó]n|Paneles o cajas|Cable de control|Apertura|Medidor)\\s*:|\\s*Medidor|,|\\s*$)';
   var pats = [
     [new RegExp('Comunicaci[oó]n:\\s*([\\s\\S]{2,40}?)'+LIMITE,'i'),'📡 Comunicación:'],
     [new RegExp('Paneles o cajas:\\s*([\\s\\S]{2,40}?)'+LIMITE,'i'),'📦 Paneles o cajas:'],
