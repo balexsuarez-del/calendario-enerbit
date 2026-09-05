@@ -5516,21 +5516,70 @@ var tablaFiltrosVisibles = false;
 var tablaOrdenCol = 'fecha';
 var tablaOrdenAsc = true;
 const TABLA_COLS = [
-  {key:'fecha', label:'Fecha'},
-  {key:'oid',   label:'ID orden'},
+  {key:'fecha', label:'Fecha', filtrable:true},
+  {key:'oid',   label:'ID orden', filtrable:true},
   {key:'st',    label:'Estado', filtrable:true},
   {key:'ci',    label:'Ciudad', filtrable:true},
   {key:'sta',   label:'Depto', filtrable:true},
-  {key:'dir',   label:'Dirección'},
+  {key:'dir',   label:'Dirección', filtrable:true},
   {key:'em',    label:'Aliado (correo)', filtrable:true},
-  {key:'medidor',label:'Medidor'},
-  {key:'nt_m',  label:'Nota'},
+  {key:'medidor',label:'Medidor', filtrable:true},
+  {key:'nt_m',  label:'Nota', filtrable:true},
 ];
 // Filtro tipo Excel por columna: cada entrada es un Set de valores
 // marcados para esa columna. Un Set vacío significa "todos" (sin filtro).
 var tablaColFiltros = {};
 var tablaDropdownAbierto = null;
 var tablaValoresPorColumnaCache = {};
+var tablaSeleccionadas = new Set(); // claves "oid|aid" de las filas marcadas
+
+function claveTablaFila(ev){ return ev.oid+'|'+ev.aid; }
+
+function toggleSeleccionFilaTabla(idx, checked){
+  var ev = tablaFilas[idx].ev;
+  var k = claveTablaFila(ev);
+  if(checked) tablaSeleccionadas.add(k);
+  else tablaSeleccionadas.delete(k);
+  var contador = document.getElementById('tabla-sel-contador');
+  if(contador) contador.textContent = tablaSeleccionadas.size;
+  var btns = document.getElementById('tabla-sel-btns');
+  if(btns) btns.style.display = tablaSeleccionadas.size ? 'flex' : 'none';
+}
+
+async function eliminarSeleccionadasTabla(){
+  if(!tablaSeleccionadas.size) return;
+  if(!confirm('Se van a ELIMINAR '+tablaSeleccionadas.size+' tarjeta(s) seleccionada(s) por completo. Esto no se puede deshacer. ¿Continuar?')) return;
+  Object.keys(osIdx).forEach(function(fecha){
+    osIdx[fecha] = osIdx[fecha].filter(function(e){ return !tablaSeleccionadas.has(claveTablaFila(e)); });
+    if(!osIdx[fecha].length) delete osIdx[fecha];
+  });
+  tablaSeleccionadas.clear();
+  saveToLocalStorage();
+  applyFilters();
+  if(selDate) renderPaneContent();
+  toast('🗑️ Tarjetas eliminadas','ok');
+  renderAsstTabla();
+  pushFullDatasetToGAS();
+}
+
+async function fusionarSeleccionadasTabla(){
+  if(tablaSeleccionadas.size<2){ toast('Selecciona al menos 2 tarjetas para fusionar','err'); return; }
+  var grupo = [];
+  Object.entries(osIdx).forEach(function(entry){
+    entry[1].forEach(function(ev){
+      if(tablaSeleccionadas.has(claveTablaFila(ev))) grupo.push({ev:ev, fecha:entry[0]});
+    });
+  });
+  if(!confirm('Se van a fusionar '+grupo.length+' tarjetas en 1 sola. Se conserva el estado más avanzado, y se rescatan notas, materiales y direcciones de TODAS antes de descartar las demás — no se pierde el avance. ¿Continuar?')) return;
+  fusionarGrupoDuplicado(grupo);
+  tablaSeleccionadas.clear();
+  saveToLocalStorage();
+  applyFilters();
+  if(selDate) renderPaneContent();
+  toast('🔗 Tarjetas fusionadas en 1, sin perder notas/materiales','ok');
+  renderAsstTabla();
+  pushFullDatasetToGAS();
+}
 
 function marcarTodosFiltroColumna(col, marcarTodos){
   if(marcarTodos){
@@ -5555,8 +5604,8 @@ function filtrarDropdownTabla(col, texto){
   });
 }
 
-function valorColumnaTabla(ev, col){
-  var v = col==='st' ? calcStatus(ev) : (ev[col] || '');
+function valorColumnaTabla(ev, col, fecha){
+  var v = col==='st' ? calcStatus(ev) : (col==='fecha' ? (fecha||'') : (ev[col] || ''));
   return v || '(vacío)';
 }
 function etiquetaValorColumna(col, valor){
@@ -5641,7 +5690,7 @@ function renderAsstTabla(){
     entry[1].forEach(function(ev){
       if(ev.sta) deptosDisponibles.add(ev.sta);
       if(ev.al) aliadosDisponibles.add(ev.al);
-      TABLA_COLS.forEach(function(c){ if(c.filtrable) valoresPorColumna[c.key].add(valorColumnaTabla(ev, c.key)); });
+      TABLA_COLS.forEach(function(c){ if(c.filtrable) valoresPorColumna[c.key].add(valorColumnaTabla(ev, c.key, fecha)); });
       // Búsqueda amplia (como en Excel): ID, dirección, ciudad, aliado,
       // correo, medidor y nota — no solo los 3 campos originales.
       if(texto && !(nrm(ev.oid).includes(texto) || nrm(ev.dir||'').includes(texto) || nrm(ev.ci||'').includes(texto) ||
@@ -5654,7 +5703,7 @@ function renderAsstTabla(){
       // desmarcados, ocultar las filas que coincidan con alguno de ellos.
       var filtroColumnaOculta = Object.keys(tablaColFiltros).some(function(col){
         var excluidos = tablaColFiltros[col];
-        return excluidos && excluidos.size>0 && excluidos.has(valorColumnaTabla(ev, col));
+        return excluidos && excluidos.size>0 && excluidos.has(valorColumnaTabla(ev, col, fecha));
       });
       if(filtroColumnaOculta) return;
       var problemas = detectarInconsistencias(ev, fecha);
@@ -5716,11 +5765,18 @@ function renderAsstTabla(){
 
   html += '<button class="btn btn-primary btn-sm" style="width:100%;margin-bottom:8px" onclick="guardarCambiosTabla()">💾 Guardar todos los cambios'+(tablaCambiosSinGuardar?' <span class="sev-alta">●</span>':'')+'</button>';
 
+  html += '<div id="tabla-sel-btns" style="display:'+(tablaSeleccionadas.size?'flex':'none')+';gap:6px;margin-bottom:8px;background:var(--bg2);padding:6px 8px;border-radius:6px;align-items:center">'+
+    '<span style="font-size:.74rem"><span id="tabla-sel-contador">'+tablaSeleccionadas.size+'</span> seleccionada(s)</span>'+
+    '<button class="btn btn-sm btn-secondary" onclick="fusionarSeleccionadasTabla()">🔗 Fusionar en 1</button>'+
+    '<button class="btn btn-sm btn-ghost" style="color:var(--rd)" onclick="eliminarSeleccionadasTabla()">🗑️ Eliminar</button>'+
+  '</div>';
+
   if(!tablaFilas.length){
     html += '<div class="asst-empty">No hay OS en ese rango/búsqueda</div>';
   } else {
     html += '<div style="overflow:auto;max-height:65vh;border:1px solid var(--bd);border-radius:8px"><table style="width:100%;border-collapse:collapse;font-size:.72rem">'+
       '<thead><tr style="background:var(--bg2);text-align:left">'+
+        '<th style="position:sticky;top:0;background:var(--bg2);padding:4px 6px;border-bottom:1px solid var(--bd);z-index:1"></th>'+
         TABLA_COLS.map(function(c){
           var flecha = tablaOrdenCol===c.key ? (tablaOrdenAsc?' ▲':' ▼') : '';
           var filtroActivo = c.filtrable && tablaColFiltros[c.key] && tablaColFiltros[c.key].size>0;
@@ -5761,6 +5817,7 @@ function renderAsstTabla(){
       // Cada celda editable tiene id="tc-FILA-COLUMNA" para poder navegar
       // con las flechas del teclado como en Excel (ver navegarTablaTeclado).
       html += '<tr style="border-bottom:1px solid var(--bd)'+(tieneProblemas?';background:#FFF7ED':'')+'" onclick="irYResaltarOS(\''+ev.oid+'\',\''+encodeURIComponent(ev.aid)+'\',\''+row.fecha+'\')" data-fila="'+idx+'">'+
+        '<td style="padding:3px" onclick="event.stopPropagation()"><input type="checkbox" '+(tablaSeleccionadas.has(claveTablaFila(ev))?'checked':'')+' onchange="toggleSeleccionFilaTabla('+idx+',this.checked)"></td>'+
         '<td style="padding:3px 6px;white-space:nowrap">'+iconoProblema+' '+row.fecha+'</td>'+
         '<td style="padding:3px 6px;white-space:nowrap;font-family:monospace">'+(ev.oid||'').slice(-8)+'</td>'+
         '<td style="padding:2px" onclick="event.stopPropagation()"><select id="tc-'+idx+'-0" onkeydown="navegarTablaTeclado(event,'+idx+',0)" onchange="editarCeldaTabla('+idx+',\'em_m\',this.value)" style="width:100%;font-size:.72rem;border:1px solid var(--bd);border-radius:4px">'+estOpts+'</select></td>'+
