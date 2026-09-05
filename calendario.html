@@ -5996,14 +5996,17 @@ function parseMaterialFromDesc(desc) {
   // mezclaba el final de un dato con el inicio del siguiente. Ahora cada
   // patrón para justo antes de la SIGUIENTE etiqueta conocida (o el final
   // del texto), en vez de a ciegas por longitud.
-  var LIMITE = '(?=\\s*(?:Tel[eé]fono|Necesario|Comunicaci[oó]n|Paneles o cajas|Cable de control|Apertura|Medidor)\\s*:|\\s*Medidor|,|\\s*$)';
+  var LIMITE = '(?=\\s*(?:Tel[eé]fono|Necesario|Comunicaci[oó]n|Paneles o cajas|Cable de control|Apertura|Med(?:idor)?)\\s*:|\\s*Med(?:idor)?\\b|,|\\s*$)';
   var pats = [
     [new RegExp('Comunicaci[oó]n:\\s*([\\s\\S]{2,40}?)'+LIMITE,'i'),'📡 Comunicación:'],
     [new RegExp('Paneles o cajas:\\s*([\\s\\S]{2,40}?)'+LIMITE,'i'),'📦 Paneles o cajas:'],
     [new RegExp('Cable de control:\\s*([\\s\\S]{2,40}?)'+LIMITE,'i'),'🔗 Cable de control:'],
     [new RegExp('Apertura:\\s*([\\s\\S]{2,40}?)'+LIMITE,'i'),'🔓 Apertura:'],
-    [new RegExp('Medidor[\\s\\S]{0,20}?[Ii]nstalar[:\\s]+([\\s\\S]{2,25}?)'+LIMITE),'🔌 Medidor a instalar:'],
-    [new RegExp('Medidor[\\s\\S]{0,20}?[Ss]itio[:\\s]+([\\s\\S]{2,25}?)'+LIMITE),'📟 Medidor en sitio:'],
+    // "Medidor" a veces viene abreviado como "Med" (ej. "Med en sitio",
+    // "Med eB a instalar") — se acepta cualquiera de las dos formas.
+    [new RegExp('Med(?:idor)?[\\s\\S]{0,20}?[Ii]nstalar[:\\s]+([\\s\\S]{2,25}?)'+LIMITE,'i'),'🔌 Medidor a instalar:'],
+    [new RegExp('Med(?:idor)?[\\s\\S]{0,20}?[Ss]itio[:\\s]+([\\s\\S]{2,25}?)'+LIMITE,'i'),'📟 Medidor en sitio:'],
+    [new RegExp('Medidor principal:\\s*([\\s\\S]{2,40}?)'+LIMITE,'i'),'🔧 Medidor principal:'],
   ];
   pats.forEach(function(p){
     var m = desc.match(p[0]);
