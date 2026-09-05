@@ -2086,7 +2086,10 @@ function normalizeFechaFromGAS(raw) {
 function mapGasRowToEv(row) {
   var oid = row.order_id||'';
   return {
-    oid: oid, aid: row.assignee_id || (oid+'-a'),
+    // El ID de orden es la única identidad — el aid ya no se usa para
+    // distinguir puntos, siempre queda vacío para que coincida de forma
+    // consistente sin importar qué esquema viejo trajera la fila en Sheets.
+    oid: oid, aid: '',
     fecha: normalizeFechaFromGAS(row.fecha),
     st: row.estado||'pending', em_m: row.estado_manual||'',
     ci: row.city||'', sta: row.state||'',
@@ -2150,20 +2153,24 @@ async function mergeFullDatasetFromGAS() {
   try {
     var data = await gasGet({action:'getOS'});
     if(!(data && data.ok && data.data)) return;
-    var byKey = {};
+    // El ID de orden es la única identidad real — se busca coincidencia
+    // por eso, no por (oid,aid), para que una fila vieja del Sheet (con un
+    // esquema de aid distinto) se reconozca como la MISMA orden en vez de
+    // agregarse como una tarjeta nueva/duplicada.
+    var byOid = {};
     Object.entries(osIdx).forEach(function(entry) {
       var fecha = entry[0];
-      entry[1].forEach(function(ev) { byKey[ev.oid+'|'+ev.aid] = {ev:ev, fecha:fecha}; });
+      entry[1].forEach(function(ev) { byOid[nrm(ev.oid)] = {ev:ev, fecha:fecha}; });
     });
     var added = 0;
     data.data.forEach(function(row) {
       var mapped = mapGasRowToEv(row);
       if(!mapped.oid || !mapped.fecha) return;
-      var key = mapped.oid+'|'+mapped.aid;
-      var found = byKey[key];
+      var found = byOid[nrm(mapped.oid)];
       if(!found) {
         if(!osIdx[mapped.fecha]) osIdx[mapped.fecha] = [];
         osIdx[mapped.fecha].push(mapped);
+        byOid[nrm(mapped.oid)] = {ev:mapped, fecha:mapped.fecha};
         added++;
       } else if(found.fecha !== mapped.fecha) {
         var oldArr = osIdx[found.fecha];
@@ -2181,6 +2188,11 @@ async function mergeFullDatasetFromGAS() {
       if(selDate) renderPaneContent();
       saveToLocalStorage();
       toast(added+' OS nuevas sincronizadas desde Google Sheets', 'ok');
+      // Por si el Sheet compartido traía filas viejas de antes del cambio
+      // de arquitectura (ID de orden como única llave), limpiar cualquier
+      // duplicado que se haya colado, sin esperar a que alguien abra
+      // Diagnóstico o recargue la página.
+      ejecutarDiagnosticoAutomatico();
     }
   } catch(e) { /* silencioso — doSync ya reporta el estado de conexión */ }
 }
@@ -3192,7 +3204,7 @@ async function doSync() {
       data.changes.forEach(ch => {
         Object.entries(osIdx).forEach(([fecha, evs]) => {
           evs.forEach(ev => {
-            if(ev.oid===ch.order_id && ev.aid===ch.assignee_id) {
+            if(nrm(ev.oid)===nrm(ch.order_id)) {
               if(ch.estado_manual !== undefined)   ev.em_m = ch.estado_manual;
               if(ch.material_estado !== undefined) ev.mat  = ch.material_estado;
               if(ch.nota_manual !== undefined)     ev.nt_m = ch.nota_manual;
