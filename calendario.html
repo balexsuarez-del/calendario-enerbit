@@ -2811,6 +2811,7 @@ function processExcelRows(rows, nombre) {
 
   depColorMap={}; depColorIdx=0;
   var ok=0, skip=0, maxFechaArchivo='';
+  var nuevas=0, actualizadas=0;
 
   // Pasada previa: cuántas direcciones VÁLIDAS distintas trae cada orden en
   // este archivo. Sirve para decidir qué hacer con filas sin dirección
@@ -3026,6 +3027,7 @@ function processExcelRows(rows, nombre) {
     }
 
     if(encontrado){
+      actualizadas++;
       var ex = encontrado.ev;
       // Si la dirección nueva es más específica (más larga) que la que ya
       // había, se adopta — el detalle (ej. número de apartamento) no se
@@ -3101,6 +3103,7 @@ function processExcelRows(rows, nombre) {
       if(!osIdx[fecha]) osIdx[fecha]=[];
       osIdx[fecha].push(ev);
     } else {
+      nuevas++;
       ev.mts=[];
       osIdx[fecha].push(ev);
     }
@@ -3121,7 +3124,7 @@ function processExcelRows(rows, nombre) {
   setProg(100,'Listo');
   setTimeout(function(){ setProg(null); }, 500);
   setSyncUI('ok', ok+' OS · '+nombre);
-  toast(ok+' ordenes cargadas'+(skip?' ('+skip+' sin fecha)':''), 'ok');
+  toast(ok+' fila(s) procesadas: '+nuevas+' orden(es) nueva(s), '+actualizadas+' actualización(es) a órdenes existentes'+(skip?' ('+skip+' sin fecha)':''), 'ok');
   startSync();
 
   // Diagnóstico automático: revisa duplicados/atrasos/patrones apenas se
