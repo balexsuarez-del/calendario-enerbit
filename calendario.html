@@ -208,7 +208,7 @@ html,body{height:100%;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
 .os-time{font-size:.7rem;background:var(--bg);padding:1px 6px;border-radius:4px;color:var(--gm)}
 .os-id{font-size:.6rem;font-family:monospace;background:#EDE9FE;color:#501C7C;padding:1px 6px;border-radius:4px}
 .os-loc{font-size:.72rem;color:var(--gm);margin-bottom:4px;line-height:1.55}
-.os-obs{font-size:.68rem;color:var(--gm);margin-top:5px;border-left:2px solid var(--bd);padding-left:7px;line-height:1.5;font-style:italic}
+.os-obs{font-size:.74rem;color:#374151;margin-top:5px;border-left:2px solid var(--bd);padding-left:7px;line-height:1.5}
 .os-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
 .tag{font-size:.62rem;padding:2px 8px;border-radius:9px;font-weight:600;display:inline-flex}
 .tag-done  {background:#D1FAE5;color:#065F46}
@@ -3684,20 +3684,18 @@ function osCardHTML(ev, key) {
         (ev.al?(function(){var ac=aliColor(ev.al);return '<span class="tag" style="background:'+ac.bg+';color:'+ac.text+';border:1px solid '+ac.bar+'40">🤝 '+ev.al+'</span>';})():'')+
         (ev.mat?'<span class="tag" style="background:'+mat.bg+';color:'+mat.cl+'">'+mat.label+'</span>':'')+
       '</div>'+
-      (ev.nt_m?'<div class="os-nota">📌 '+ev.nt_m+'</div>':'')+
+      (ev.nt_m?'<div class="os-nota" style="color:#1F2937;font-weight:500">📌 '+ev.nt_m+'</div>':'')+
       readBtns+
       (function(){ var oid2=ev.oid||ev.o; var mts2=ev.mts&&ev.mts.length?ev.mts:parseMaterialFromDesc((ev.des||ev.ob||ev.description||'').substring(0,500)); return mts2.length?renderMatHtml(oid2,mts2,ev.mat):''; }())+
       '<div class="edit-section">'+
         '<div class="edit-row"><label>Estado</label>'+
-          '<select class="edit-select" id="est-'+ev.oid+'-'+ev.aid+'">'+estOpts+'</select>'+
-          '<button class="save-btn" onclick="saveEstado(\''+ev.oid+'\',\''+ev.aid+'\')">💾</button></div>'+
+          '<select class="edit-select" id="est-'+ev.oid+'-'+ev.aid+'">'+estOpts+'</select></div>'+
         '<div class="edit-row"><label>Material</label>'+
-          '<select class="edit-select" id="mat-'+ev.oid+'-'+ev.aid+'">'+matOpts+'</select>'+
-          '<button class="save-btn" onclick="saveMaterial(\''+ev.oid+'\',\''+ev.aid+'\')">💾</button></div>'+
+          '<select class="edit-select" id="mat-'+ev.oid+'-'+ev.aid+'">'+matOpts+'</select></div>'+
         '<div class="edit-row"><label>Ciudad</label>'+
           '<input class="edit-select" id="ci-'+ev.oid+'-'+ev.aid+'" value="'+(ev.ci||'').replace(/"/g,'&quot;')+'" style="flex:1">'+
-          '<input class="edit-select" id="sta-'+ev.oid+'-'+ev.aid+'" placeholder="Depto" value="'+(ev.sta||'').replace(/"/g,'&quot;')+'" style="width:90px">'+
-          '<button class="save-btn" onclick="saveUbicacion(\''+ev.oid+'\',\''+ev.aid+'\')">💾</button></div>'+
+          '<input class="edit-select" id="sta-'+ev.oid+'-'+ev.aid+'" placeholder="Depto" value="'+(ev.sta||'').replace(/"/g,'&quot;')+'" style="width:90px"></div>'+
+        '<button class="save-btn" style="width:100%;padding:7px;font-size:.85rem;font-weight:700;border-radius:8px" onclick="saveTodoEdicion(\''+ev.oid+'\',\''+ev.aid+'\')">💾 Guardar cambios</button>'+
         '<div class="nota-wrap">'+
           '<textarea id="nota-'+ev.oid+'-'+ev.aid+'" placeholder="Escribe una nota...">'+(ev.nt_m||'')+'</textarea>'+
           '<div class="nota-actions">'+
@@ -3717,6 +3715,29 @@ function patchOS(oid, aid, fields) {
   applyFilters();
   // Persistir cambio en localStorage
   try { saveToLocalStorage(); } catch(e){}
+}
+
+async function saveTodoEdicion(oid,aid){
+  const estVal=document.getElementById(`est-${oid}-${aid}`)?.value||'';
+  const matVal=document.getElementById(`mat-${oid}-${aid}`)?.value||'';
+  const nuevaCi=document.getElementById(`ci-${oid}-${aid}`)?.value||'';
+  const nuevaSta=document.getElementById(`sta-${oid}-${aid}`)?.value||'';
+  const evActual = Object.values(osIdx).flat().find(e=>e.oid===oid&&e.aid===aid);
+  const ciAnterior = evActual?.ci||'';
+
+  patchOS(oid,aid,{em_m:estVal, mat:matVal, ci:nuevaCi, sta:nuevaSta});
+  renderOSList(selDate);
+
+  if(ciAnterior && nrm(ciAnterior)!==nrm(nuevaCi)){
+    correccionesAprendidas.ciudades[nrm(ciAnterior)] = {ci:nuevaCi, sta:nuevaSta};
+    guardarCorreccionesAprendidas();
+  }
+
+  await Promise.all([
+    gasPost({action:'updateOSEstado',order_id:oid,assignee_id:aid,estado_manual:estVal}),
+    gasPost({action:'updateOSMaterial',order_id:oid,assignee_id:aid,material_estado:matVal}),
+  ]);
+  toast('✅ Guardado','ok');
 }
 
 async function saveEstado(oid,aid){
