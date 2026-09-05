@@ -5527,6 +5527,17 @@ const TABLA_COLS = [
   {key:'nt_m',  label:'Nota'},
 ];
 
+function verTodoTabla(){
+  var fechas = Object.keys(osIdx).sort();
+  document.getElementById('tabla-desde').value = fechas[0] || dateKey(new Date());
+  document.getElementById('tabla-hasta').value = fechas[fechas.length-1] || dateKey(new Date());
+  document.getElementById('tabla-buscar').value = '';
+  if(document.getElementById('tabla-depto')) document.getElementById('tabla-depto').value = '';
+  if(document.getElementById('tabla-aliado')) document.getElementById('tabla-aliado').value = '';
+  if(document.getElementById('tabla-medidor')) document.getElementById('tabla-medidor').value = '';
+  renderAsstTabla();
+}
+
 function renderAsstTabla(){
   const body = document.getElementById('asst-body');
   const desde = document.getElementById('tabla-desde')?.value || dateKey(new Date(curY, curM, 1));
@@ -5545,7 +5556,11 @@ function renderAsstTabla(){
     entry[1].forEach(function(ev){
       if(ev.sta) deptosDisponibles.add(ev.sta);
       if(ev.al) aliadosDisponibles.add(ev.al);
-      if(texto && !(nrm(ev.oid).includes(texto) || nrm(ev.dir||'').includes(texto) || nrm(ev.ci||'').includes(texto))) return;
+      // Búsqueda amplia (como en Excel): ID, dirección, ciudad, aliado,
+      // correo, medidor y nota — no solo los 3 campos originales.
+      if(texto && !(nrm(ev.oid).includes(texto) || nrm(ev.dir||'').includes(texto) || nrm(ev.ci||'').includes(texto) ||
+                    nrm(ev.al||'').includes(texto) || nrm(ev.em||'').includes(texto) || nrm(ev.medidor||'').includes(texto) ||
+                    nrm(ev.nt_m||'').includes(texto))) return;
       if(fDepto && ev.sta!==fDepto) return;
       if(fAliado && ev.al!==fAliado) return;
       if(fMedidor && !nrm(ev.medidor||'').includes(fMedidor)) return;
@@ -5573,8 +5588,12 @@ function renderAsstTabla(){
     '<input type="date" id="tabla-desde" value="'+desde+'" onchange="renderAsstTabla()" style="flex:1;min-width:110px;padding:4px;border:1px solid var(--bd);border-radius:6px;font-size:.75rem">'+
     '<input type="date" id="tabla-hasta" value="'+hasta+'" onchange="renderAsstTabla()" style="flex:1;min-width:110px;padding:4px;border:1px solid var(--bd);border-radius:6px;font-size:.75rem">'+
     '<button class="btn btn-ghost btn-sm" onclick="tablaFiltrosVisibles=!tablaFiltrosVisibles;renderAsstTabla()">🔍 Filtros'+(tablaFiltrosVisibles?' ▲':' ▼')+'</button>'+
+    '<button class="btn btn-ghost btn-sm" onclick="verTodoTabla()">🔄 Ver todo</button>'+
   '</div>'+
-  '<input type="text" id="tabla-buscar" placeholder="Buscar por ID, dirección o ciudad..." value="'+(document.getElementById('tabla-buscar')?.value||'').replace(/"/g,'&quot;')+'" oninput="renderAsstTabla()" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:6px;font-size:.78rem;margin-bottom:8px;box-sizing:border-box">';
+  '<div style="display:flex;gap:4px;margin-bottom:8px">'+
+    '<input type="text" id="tabla-buscar" placeholder="Buscar por ID, dirección, ciudad, aliado, correo, medidor o nota..." value="'+(document.getElementById('tabla-buscar')?.value||'').replace(/"/g,'&quot;')+'" oninput="renderAsstTabla()" style="flex:1;padding:6px;border:1px solid var(--bd);border-radius:6px;font-size:.78rem;box-sizing:border-box">'+
+    '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'tabla-buscar\').value=\'\';renderAsstTabla()" title="Limpiar búsqueda">✕</button>'+
+  '</div>';
 
   if(tablaFiltrosVisibles){
     html += '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;background:var(--bg2);padding:8px;border-radius:8px">'+
