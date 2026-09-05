@@ -1081,13 +1081,6 @@ let empresa='eb';
 var changedOS = {};
 try { changedOS = JSON.parse(localStorage.getItem('changedOS') || '{}'); } catch(e) {}
 
-function markChanged(oid, aid, campo) {
-  var key = oid + '|' + aid;
-  changedOS[key] = { campo: campo, ts: Date.now(), readBy: [] };
-  saveChanged();
-  // Sincronizar con GAS para que otros usuarios vean el cambio
-  gasPost({action:'addHistorial', oid:oid, campo:campo, accion:'cambio', ts:new Date().toISOString()}).catch(function(){});
-}
 function markRead(oid, aid, quien) {
   var key = oid + '|' + aid;
   if(!changedOS[key]) changedOS[key] = { campo:'', ts:Date.now(), readBy:[] };
@@ -1118,10 +1111,6 @@ function hashColor(str) {
   for(let i=0; i<str.length; i++) h = str.charCodeAt(i) + ((h<<5)-h);
   const hue = Math.abs(h) % 360;
   return { bar:'hsl('+hue+',60%,42%)', bg:'hsl('+hue+',70%,94%)', cl:'hsl('+hue+',65%,26%)' };
-}
-
-function isKantiA(ev) {
-  return getEmpresa(ev) === 'kt';
 }
 
 function getEmpresa(ev) {
@@ -2149,7 +2138,14 @@ async function pullFullDatasetFromGAS() {
 // Trae el dataset de Google Sheets y lo FUSIONA con lo que ya está en pantalla
 // (agrega OS nuevas que otros hayan cargado, actualiza las existentes) sin
 // perder nada que este navegador tenga localmente. Uso: refresco periódico.
+// Candado global: evita que las 2 sincronizaciones automáticas (cada 20s y
+// cada 60s) corran al mismo tiempo — si una está en curso, la otra se
+// salta ese ciclo en vez de arriesgarse a pisar cambios a medio aplicar.
+var syncEnProgreso = false;
+
 async function mergeFullDatasetFromGAS() {
+  if(syncEnProgreso) return;
+  syncEnProgreso = true;
   try {
     var data = await gasGet({action:'getOS'});
     if(!(data && data.ok && data.data)) return;
@@ -2195,6 +2191,7 @@ async function mergeFullDatasetFromGAS() {
       ejecutarDiagnosticoAutomatico();
     }
   } catch(e) { /* silencioso — doSync ya reporta el estado de conexión */ }
+  finally { syncEnProgreso = false; }
 }
 
 // ── ALIADO ───────────────────────────────────────────────────
@@ -2484,89 +2481,6 @@ function saveToLocalStorage() {
     }
   });
   actualizarBadgeAsistente();
-}
-
-async function loadFromGAS() {
-  setSyncUI('busy', 'Cargando...');
-  try {
-    const data = await gasGet({action: 'getOS'});
-    if(data.ok && data.data && data.data.length) {
-      processRowsFromGAS(data.data);
-      // Cargar actividades
-      const data2 = await gasGet({action: 'getActividades'});
-      if(data2.ok && data2.data) {
-        data2.data.forEach(act => {
-          if(!actEv[act.fecha]) actEv[act.fecha] = [];
-          actEv[act.fecha].push({
-            id:act.id, titulo:act.titulo, cuadrilla:act.cuadrilla,
-            departamento:act.departamento, hora:act.hora, obs:act.obs, color:act.color
-          });
-        });
-      }
-      setSyncUI('ok', data.data.length + ' OS');
-      startSync();
-    } else {
-      setSyncUI('', 'Sin datos');
-    }
-  } catch(e) {
-    setSyncUI('err', 'Sin conexión');
-  }
-}
-
-function processRowsFromGAS(rows) {
-  osIdx = {};
-  depColorMap = {}; depColorIdx = 0;
-  rows.forEach(row => {
-    const fecha = row.fecha;
-    if(!fecha) return;
-    const ev = {
-      oid:row.oid||'', aid:row.aid||'',
-      st:row.estado||'',  em_m:row.estado_manual||'',
-      ci:row.city||'',   sta:row.state||'',
-      tc:row.type_code||'', tn:row.type_name||'',
-      op:row.operator||'', em:row.email||'',
-      al:row.aliado||getAliado(row.email||''),
-      tec:row.tecnico||'', dir:row.dir||'', cert:row.cert||'',
-      des:row.description||'', obs:row.obs||'',
-      cr:row.cancel_reason||'', co:row.cancel_obs||'',
-      ti:row.hora||'',
-      nt_m:row.nota||'', mat:row.material||'',
-    };
-    // Upsert: si la OS ya existe en esa fecha, actualizar; si no, agregar
-    if(!osIdx[fecha]) osIdx[fecha]=[];
-    const existingIdx = osIdx[fecha].findIndex(function(e){ return e.oid===ev.oid; });
-    if(existingIdx >= 0) {
-      // Actualizar datos del sistema conservando anotaciones manuales
-      const existing = osIdx[fecha][existingIdx];
-      ev.em_m = existing.em_m || ev.em_m;
-      ev.nt_m = existing.nt_m || ev.nt_m;
-      ev.mat  = existing.mat  || ev.mat;
-      osIdx[fecha][existingIdx] = ev;
-    } else {
-      // OS nueva o movida de fecha - verificar si estaba en otra fecha
-      var oldEntry = prevMap[ev.oid];
-      if(oldEntry && oldEntry.fecha !== fecha) {
-        // Estaba en otra fecha - remover de la fecha anterior
-        if(osIdx[oldEntry.fecha]) {
-          osIdx[oldEntry.fecha] = osIdx[oldEntry.fecha].filter(function(e){ return e.oid !== ev.oid; });
-          if(osIdx[oldEntry.fecha].length === 0) delete osIdx[oldEntry.fecha];
-        }
-        // Preservar anotaciones
-        ev.em_m = oldEntry.ev.em_m || ev.em_m;
-        ev.nt_m = oldEntry.ev.nt_m || ev.nt_m;
-        ev.mat  = oldEntry.ev.mat  || ev.mat;
-      }
-      osIdx[fecha].push(ev);
-    }
-    if(ev.sta) depColor(ev.sta);
-  });
-  const firstDate = Object.keys(osIdx).sort()[0];
-  if(firstDate){const[y,m]=firstDate.split('-').map(Number);curY=y;curM=m-1;}
-  allDeps=[...new Set(Object.values(osIdx).flat().map(e=>e.sta).filter(Boolean))].sort();
-  allCits=[...new Set(Object.values(osIdx).flat().map(e=>e.ci).filter(Boolean))].sort();
-  showCalScreen();
-  buildFilters();
-  applyFilters();
 }
 
 // ── CARGAR EXCEL/CSV ─────────────────────────────────────────
@@ -3199,6 +3113,8 @@ function startSync() {
 }
 
 async function doSync() {
+  if(syncEnProgreso) return;
+  syncEnProgreso = true;
   setSyncUI('busy','Sincronizando...');
   try {
     const data = await gasGet({action:'getChanges', since:lastSyncTs});
@@ -3230,6 +3146,8 @@ async function doSync() {
     }
   } catch(e) {
     setSyncUI('err','GAS offline - datos locales OK');
+  } finally {
+    syncEnProgreso = false;
   }
 }
 
@@ -3615,6 +3533,24 @@ function renderOSList(key) {
   list.innerHTML=evs.map(ev=>osCardHTML(ev,key)).join('');
 }
 
+// Cuando la nota tiene varias cosas combinadas (direcciones extra, medidor,
+// avisos de "cubre varios puntos", etc. — todo separado con " | "), se
+// muestra como lista con viñetas en vez de un párrafo corrido, para que se
+// pueda leer de un vistazo. Si es una nota simple de una sola cosa, se
+// muestra igual que siempre. No cambia el texto guardado, solo cómo se ve.
+function renderNotaCardHTML(nt){
+  var partes = nt.split(' | ').map(function(p){ return p.trim(); }).filter(Boolean);
+  if(partes.length<=1){
+    return '<div class="os-nota" style="color:#1F2937;font-weight:500">📌 '+nt+'</div>';
+  }
+  return '<div class="os-nota" style="color:#1F2937;font-weight:500">'+
+    '<div style="font-weight:700;margin-bottom:2px">📌 Nota (' + partes.length + ')</div>'+
+    '<ul style="margin:0;padding-left:18px">'+
+      partes.map(function(p){ return '<li style="margin-bottom:2px">'+p+'</li>'; }).join('')+
+    '</ul>'+
+  '</div>';
+}
+
 function osCardHTML(ev, key) {
   var ds=calcStatus(ev), sc=ST[ds]||ST.pending;
   var co=depColor(ev.sta), mat=MAT[ev.mat||'']||MAT[''];
@@ -3699,7 +3635,7 @@ function osCardHTML(ev, key) {
         (ev.al?(function(){var ac=aliColor(ev.al);return '<span class="tag" style="background:'+ac.bg+';color:'+ac.text+';border:1px solid '+ac.bar+'40">🤝 '+ev.al+'</span>';})():'')+
         (ev.mat?'<span class="tag" style="background:'+mat.bg+';color:'+mat.cl+'">'+mat.label+'</span>':'')+
       '</div>'+
-      (ev.nt_m?'<div class="os-nota" style="color:#1F2937;font-weight:500">📌 '+ev.nt_m+'</div>':'')+
+      (ev.nt_m?renderNotaCardHTML(ev.nt_m):'')+
       readBtns+
       (function(){ var oid2=ev.oid||ev.o; var mts2=ev.mts&&ev.mts.length?ev.mts:parseMaterialFromDesc((ev.des||ev.ob||ev.description||'').substring(0,500)); return mts2.length?renderMatHtml(oid2,mts2,ev.mat):''; }())+
       '<div class="edit-section">'+
@@ -3755,14 +3691,6 @@ async function saveTodoEdicion(oid,aid){
   toast('✅ Guardado','ok');
 }
 
-async function saveEstado(oid,aid){
-  const val=document.getElementById(`est-${oid}-${aid}`)?.value||'';
-  patchOS(oid,aid,{em_m:val});
-  renderOSList(selDate);
-  const d=await gasPost({action:'updateOSEstado',order_id:oid,assignee_id:aid,estado_manual:val});
-  toast(d?.ok?'Estado guardado ✓':' Estado guardado (local)','ok');
-}
-
 async function saveMaterial(oid,aid){
   const val=document.getElementById(`mat-${oid}-${aid}`)?.value||'';
   patchOS(oid,aid,{mat:val});
@@ -3770,23 +3698,6 @@ async function saveMaterial(oid,aid){
   toast(d?.ok?'Material guardado ✓':' Material guardado (local)','ok');
 }
 
-async function saveUbicacion(oid,aid){
-  const nuevaCi=document.getElementById(`ci-${oid}-${aid}`)?.value||'';
-  const nuevaSta=document.getElementById(`sta-${oid}-${aid}`)?.value||'';
-  const evActual = Object.values(osIdx).flat().find(e=>e.oid===oid&&e.aid===aid);
-  const ciAnterior = evActual?.ci||'';
-  patchOS(oid,aid,{ci:nuevaCi, sta:nuevaSta});
-  renderOSList(selDate);
-  // Aprender: si el texto de ciudad que traía el archivo estaba mal, la
-  // próxima vez que aparezca ese mismo texto se corrige solo.
-  if(ciAnterior && nrm(ciAnterior)!==nrm(nuevaCi)){
-    correccionesAprendidas.ciudades[nrm(ciAnterior)] = {ci:nuevaCi, sta:nuevaSta};
-    guardarCorreccionesAprendidas();
-    toast('📍 Ubicación guardada y aprendida: "'+ciAnterior+'" → "'+nuevaCi+'" se corregirá sola la próxima vez','ok');
-  } else {
-    toast('Ubicación guardada ✓','ok');
-  }
-}
 
 async function saveNota(oid,aid){
   const val=document.getElementById(`nota-${oid}-${aid}`)?.value||'';
@@ -6113,108 +6024,6 @@ function renderMatHtml(oid, mts, matAgregado) {
     +'</div>';
   return h;
 }
-
-// ══ IMPORT EXCEL MATERIALES ═════════════════════════════════
-// Solo actualiza: estado de material (agregado, por tarjeta), notas,
-// estado OS override — NO modifica ningún otro campo de la tarjeta.
-function importMatExcel(file) {
-  if(!file) return;
-  showToast('⏳ Leyendo: '+file.name);
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      var wb = XLSX.read(e.target.result, {type:'binary'});
-      var ws = wb.Sheets[wb.SheetNames[0]];
-      var rows = XLSX.utils.sheet_to_json(ws, {defval:''});
-
-      var candidatos = [];
-      Object.entries(osIdx).forEach(function(entry){
-        var fecha = entry[0];
-        entry[1].forEach(function(ev){ candidatos.push({ev:ev, fecha:fecha}); });
-      });
-
-      var updMat=0, updNota=0, updEst=0, notFound=0, ignorados=0;
-
-      rows.forEach(function(row) {
-        // Columnas esperadas (flexibles)
-        var oid    = String(row['ID ORDEN']||row['ORDER_ID']||row['id_orden']||'').trim();
-        var dir    = String(row['DIRECCIÓN']||row['DIRECCION']||row['direccion']||'').trim();
-        var email  = String(row['CORREO']||row['EMAIL']||row['correo']||'').trim();
-        var stLbl  = String(row['ESTADO MATERIAL']||row['estado_material']||'').trim();
-        var nota   = String(row['NOTA']||row['nota']||row['NOTAS']||'').trim();
-        var estOS  = String(row['ESTADO OS']||row['estado_os']||'').trim();
-
-        if(!oid && !dir && !email) return;
-
-        var match = _buscarCandidatoAsst(nrm(oid), nrm(dir), nrm(email), '', '', candidatos);
-        if(!match){ notFound++; return; }
-        var ev = match.ev;
-
-        // 1. Estado de material — un solo estado por tarjeta (agregado)
-        if(stLbl) {
-          var nuevoMat = _normalizarEstadoMaterialTexto(stLbl);
-          if(nuevoMat !== null){ ev.mat = nuevoMat; updMat++; }
-          else ignorados++;
-        }
-
-        // 2. Nota — solo si hay texto
-        if(nota) { ev.nt_m = nota; updNota++; }
-
-        // 3. Estado OS override — solo si viene explícito y se reconoce
-        if(estOS) {
-          var nuevoEstado = _normalizarEstadoOSAsst(estOS);
-          if(nuevoEstado) { ev.em_m = nuevoEstado; updEst++; }
-        }
-      });
-
-      saveToLocalStorage();
-      applyFilters();
-      if(selDate) renderOSList(selDate);
-      pushFullDatasetToGAS();
-      setTimeout(function(){ ejecutarDiagnosticoAutomatico(); }, 100);
-
-      showToast('✅ Importado: '+updMat+' materiales, '+updNota+' notas, '+updEst+' estados'+
-        (notFound?' · ⚠️ '+notFound+' sin OS':'')+(ignorados?' · '+ignorados+' estado(s) de material no reconocidos':''));
-
-    } catch(err) {
-      showToast('❌ Error: '+err.message, 'danger');
-    }
-  };
-  reader.readAsBinaryString(file);
-}
-
-// ══ EXPORT EXCEL MATERIALES ══════════════════════════════════
-// Una fila por OS: el estado de material es agregado (uno solo por
-// tarjeta), no por cada material individual.
-function exportMatExcel() {
-  var rows = [['ID ORDEN','TIPO','ESTADO','FECHA','CIUDAD','TÉCNICO','ALIADO','DIRECCIÓN','CORREO','MATERIALES','ESTADO MATERIAL','NOTA']];
-  Object.entries(osIdx).forEach(function(entry) {
-    var fecha=entry[0], evs=entry[1];
-    evs.forEach(function(ev) {
-      var oid = ev.oid||ev.o||'';
-      var mts = ev.mts || parseMaterialFromDesc(ev.des||ev.ob||'');
-      var matInfo = MAT[_matKeyCanonico(ev.mat)] || MAT[''];
-      rows.push([
-        oid, ev.tc||ev.t||'', calcStatus(ev), fecha,
-        ev.ci||'', ev.op||ev.p||'', ev.al||'', ev.dir||ev.r||'', ev.em||'',
-        mts.join(' | '), matInfo.label, ev.nt_m||''
-      ]);
-    });
-  });
-  var csv = rows.map(function(r){
-    return r.map(function(c){
-      var s=String(c||'').replace(/"/g,'""');
-      return s.includes(',')||s.includes('"')?'"'+s+'"':s;
-    }).join(',');
-  }).join('\n');
-  var blob = new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
-  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download='Materiales_OS_'+new Date().toISOString().split('T')[0]+'.csv';
-  a.click();
-  showToast('✅ Excel exportado: '+(rows.length-1)+' filas');
-}
-
-
 
 // ══ BIBLIOTECA SUBESTACIONES/CIRCUITOS ══════════════════════
 var cortesBiblioteca = [];
