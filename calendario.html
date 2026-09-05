@@ -5518,6 +5518,7 @@ var tablaOrdenAsc = true;
 const TABLA_COLS = [
   {key:'fecha', label:'Fecha', filtrable:true},
   {key:'oid',   label:'ID orden', filtrable:true},
+  {key:'tc',    label:'Tipo', filtrable:true},
   {key:'st',    label:'Estado', filtrable:true},
   {key:'ci',    label:'Ciudad', filtrable:true},
   {key:'sta',   label:'Depto', filtrable:true},
@@ -5526,10 +5527,10 @@ const TABLA_COLS = [
   {key:'medidor',label:'Medidor', filtrable:true},
   {key:'nt_m',  label:'Nota', filtrable:true},
 ];
-// Filtro tipo Excel por columna: cada entrada es un Set de valores
-// marcados para esa columna. Un Set vacío significa "todos" (sin filtro).
+// Filtro simple por columna: un desplegable por columna, VACÍO por
+// defecto ("Todos"). El usuario elige un solo valor para ver solo esas
+// filas — nada empieza marcado, es el usuario el que decide qué ver.
 var tablaColFiltros = {};
-var tablaDropdownAbierto = null;
 var tablaValoresPorColumnaCache = {};
 var tablaSeleccionadas = new Set(); // claves "oid|aid" de las filas marcadas
 
@@ -5581,27 +5582,17 @@ async function fusionarSeleccionadasTabla(){
   pushFullDatasetToGAS();
 }
 
-function marcarTodosFiltroColumna(col, marcarTodos){
-  if(marcarTodos){
-    delete tablaColFiltros[col];
-  } else {
-    tablaColFiltros[col] = new Set([...(tablaValoresPorColumnaCache[col]||[])]);
-  }
+// Cambiar el filtro de una columna desde su desplegable en la fila de
+// filtros — vacío = "Todos" (sin filtro en esa columna).
+function cambiarFiltroColumnaTabla(col, valor){
+  if(valor) tablaColFiltros[col] = valor;
+  else delete tablaColFiltros[col];
   renderAsstTabla();
 }
 
-// Filtra las opciones DENTRO del desplegable ya abierto sin volver a
-// renderizar toda la tabla — así no se pierde el desplegable ni la
-// posición del scroll mientras se busca, igual que el buscador del
-// AutoFiltro de Excel.
-function filtrarDropdownTabla(col, texto){
-  var q = nrm(texto);
-  var cont = document.getElementById('tabla-dd-'+col);
-  if(!cont) return;
-  cont.querySelectorAll('.tabla-dd-opcion').forEach(function(label){
-    var texto = nrm(label.textContent);
-    label.style.display = texto.includes(q) ? 'flex' : 'none';
-  });
+function limpiarTodosFiltrosColumna(){
+  tablaColFiltros = {};
+  renderAsstTabla();
 }
 
 function valorColumnaTabla(ev, col, fecha){
@@ -5613,34 +5604,12 @@ function etiquetaValorColumna(col, valor){
   return valor;
 }
 
-function toggleFiltroColumnaTabla(col, event){
-  event.stopPropagation();
-  tablaDropdownAbierto = (tablaDropdownAbierto===col) ? null : col;
-  renderAsstTabla();
-}
-
-function toggleValorFiltroColumna(col, valor, checked){
-  if(!tablaColFiltros[col]) tablaColFiltros[col] = new Set();
-  if(checked) tablaColFiltros[col].delete(valor); // quitar de "excluidos" -> se vuelve a mostrar
-  else tablaColFiltros[col].add(valor);
-  renderAsstTabla();
-}
-
-function limpiarFiltroColumna(col, event){
-  if(event) event.stopPropagation();
-  delete tablaColFiltros[col];
-  tablaDropdownAbierto = null;
-  renderAsstTabla();
-}
-
 function verTodoTabla(){
   var fechas = Object.keys(osIdx).sort();
   document.getElementById('tabla-desde').value = fechas[0] || dateKey(new Date());
   document.getElementById('tabla-hasta').value = fechas[fechas.length-1] || dateKey(new Date());
   document.getElementById('tabla-buscar').value = '';
-  if(document.getElementById('tabla-depto')) document.getElementById('tabla-depto').value = '';
-  if(document.getElementById('tabla-aliado')) document.getElementById('tabla-aliado').value = '';
-  if(document.getElementById('tabla-medidor')) document.getElementById('tabla-medidor').value = '';
+  tablaColFiltros = {};
   renderAsstTabla();
 }
 
@@ -5649,9 +5618,6 @@ function renderAsstTabla(){
   const desde = document.getElementById('tabla-desde')?.value || dateKey(new Date(curY, curM, 1));
   const hasta = document.getElementById('tabla-hasta')?.value || dateKey(new Date(curY, curM+1, 0));
   const texto = nrm(document.getElementById('tabla-buscar')?.value || '');
-  const fDepto = document.getElementById('tabla-depto')?.value || '';
-  const fAliado = document.getElementById('tabla-aliado')?.value || '';
-  const fMedidor = nrm(document.getElementById('tabla-medidor')?.value || '');
   const soloInconsistencias = document.getElementById('tabla-solo-inc')?.checked || false;
 
   // Contar cuántas veces aparece cada ID de orden en TODO lo cargado, para
@@ -5696,16 +5662,14 @@ function renderAsstTabla(){
       if(texto && !(nrm(ev.oid).includes(texto) || nrm(ev.dir||'').includes(texto) || nrm(ev.ci||'').includes(texto) ||
                     nrm(ev.al||'').includes(texto) || nrm(ev.em||'').includes(texto) || nrm(ev.medidor||'').includes(texto) ||
                     nrm(ev.nt_m||'').includes(texto))) return;
-      if(fDepto && ev.sta!==fDepto) return;
-      if(fAliado && ev.al!==fAliado) return;
-      if(fMedidor && !nrm(ev.medidor||'').includes(fMedidor)) return;
-      // Filtro tipo Excel por columna: si esta columna tiene valores
-      // desmarcados, ocultar las filas que coincidan con alguno de ellos.
-      var filtroColumnaOculta = Object.keys(tablaColFiltros).some(function(col){
-        var excluidos = tablaColFiltros[col];
-        return excluidos && excluidos.size>0 && excluidos.has(valorColumnaTabla(ev, col, fecha));
+      // Filtro simple por columna (un valor exacto por columna, vacío =
+      // sin filtro): oculta si CUALQUIER columna con filtro activo no
+      // coincide con el valor de esta fila.
+      var ocultarPorFiltroColumna = Object.keys(tablaColFiltros).some(function(col){
+        var filtroVal = tablaColFiltros[col];
+        return filtroVal && valorColumnaTabla(ev, col, fecha) !== filtroVal;
       });
-      if(filtroColumnaOculta) return;
+      if(ocultarPorFiltroColumna) return;
       var problemas = detectarInconsistencias(ev, fecha);
       if(soloInconsistencias && !problemas.length) return;
       candidatos.push({ev:ev, fecha:fecha, problemas:problemas});
@@ -5735,7 +5699,6 @@ function renderAsstTabla(){
   html += '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">'+
     '<input type="date" id="tabla-desde" value="'+desde+'" onchange="renderAsstTabla()" style="flex:1;min-width:110px;padding:4px;border:1px solid var(--bd);border-radius:6px;font-size:.75rem">'+
     '<input type="date" id="tabla-hasta" value="'+hasta+'" onchange="renderAsstTabla()" style="flex:1;min-width:110px;padding:4px;border:1px solid var(--bd);border-radius:6px;font-size:.75rem">'+
-    '<button class="btn btn-ghost btn-sm" onclick="tablaFiltrosVisibles=!tablaFiltrosVisibles;renderAsstTabla()">🔍 Filtros'+(tablaFiltrosVisibles?' ▲':' ▼')+'</button>'+
     '<button class="btn btn-ghost btn-sm" onclick="verTodoTabla()">🔄 Ver todo</button>'+
   '</div>'+
   '<label style="display:flex;align-items:center;gap:5px;font-size:.74rem;margin-bottom:8px;cursor:pointer;background:'+(totalConProblemas?'#FFF1E6':'var(--bg2)')+';padding:6px 8px;border-radius:6px">'+
@@ -5744,21 +5707,8 @@ function renderAsstTabla(){
   '<div style="display:flex;gap:4px;margin-bottom:8px">'+
     '<input type="text" id="tabla-buscar" placeholder="Buscar por ID, dirección, ciudad, aliado, correo, medidor o nota..." value="'+(document.getElementById('tabla-buscar')?.value||'').replace(/"/g,'&quot;')+'" oninput="renderAsstTabla()" style="flex:1;padding:6px;border:1px solid var(--bd);border-radius:6px;font-size:.78rem;box-sizing:border-box">'+
     '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'tabla-buscar\').value=\'\';renderAsstTabla()" title="Limpiar búsqueda">✕</button>'+
-  '</div>';
-
-  if(tablaFiltrosVisibles){
-    html += '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;background:var(--bg2);padding:8px;border-radius:8px">'+
-      '<select id="tabla-depto" onchange="renderAsstTabla()" style="flex:1;min-width:100px;padding:4px;border:1px solid var(--bd);border-radius:6px;font-size:.74rem">'+
-        '<option value="">Depto: todos</option>'+
-        [...deptosDisponibles].sort().map(function(d){ return '<option value="'+d+'"'+(fDepto===d?' selected':'')+'>'+d+'</option>'; }).join('')+
-      '</select>'+
-      '<select id="tabla-aliado" onchange="renderAsstTabla()" style="flex:1;min-width:100px;padding:4px;border:1px solid var(--bd);border-radius:6px;font-size:.74rem">'+
-        '<option value="">Aliado: todos</option>'+
-        [...aliadosDisponibles].sort().map(function(a){ return '<option value="'+a+'"'+(fAliado===a?' selected':'')+'>'+a+'</option>'; }).join('')+
-      '</select>'+
-      '<input type="text" id="tabla-medidor" placeholder="Medidor..." value="'+(document.getElementById('tabla-medidor')?.value||'').replace(/"/g,'&quot;')+'" oninput="renderAsstTabla()" style="flex:1;min-width:100px;padding:4px;border:1px solid var(--bd);border-radius:6px;font-size:.74rem">'+
-    '</div>';
-  }
+  '</div>'+
+  '<div style="font-size:.7rem;color:var(--gy);margin-bottom:6px">💡 Cada columna de la tabla tiene su propio filtro (el desplegable debajo del encabezado) — vacío significa "todos", elige un valor para ver solo esas filas.</div>';
 
   html += '<div style="font-size:.72rem;color:var(--gy);margin-bottom:6px">Mostrando '+tablaFilas.length+' de '+totalEncontrado+
     (totalEncontrado>LIMITE ? ' — acota el rango de fechas o busca algo más específico para ver el resto.' : '') + '</div>';
@@ -5779,33 +5729,29 @@ function renderAsstTabla(){
         '<th style="position:sticky;top:0;background:var(--bg2);padding:4px 6px;border-bottom:1px solid var(--bd);z-index:1"></th>'+
         TABLA_COLS.map(function(c){
           var flecha = tablaOrdenCol===c.key ? (tablaOrdenAsc?' ▲':' ▼') : '';
-          var filtroActivo = c.filtrable && tablaColFiltros[c.key] && tablaColFiltros[c.key].size>0;
-          var filtroIcono = c.filtrable ? '<span onclick="toggleFiltroColumnaTabla(\''+c.key+'\',event)" style="margin-left:4px;cursor:pointer'+(filtroActivo?';color:#DC2626':'')+'" title="Filtrar esta columna">🔽</span>' : '';
-          var dropdown = '';
-          if(tablaDropdownAbierto===c.key){
-            var valores = [...(valoresPorColumna[c.key]||[])].sort();
-            var excluidos = tablaColFiltros[c.key] || new Set();
-            dropdown = '<div onclick="event.stopPropagation()" style="position:absolute;top:100%;left:0;background:#fff;border:1px solid var(--bd);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.2);padding:8px;z-index:10;min-width:190px;max-height:260px;display:flex;flex-direction:column;font-weight:400;text-transform:none;cursor:default">'+
-              '<input type="text" placeholder="Buscar..." oninput="filtrarDropdownTabla(\''+c.key+'\',this.value)" style="width:100%;padding:4px 6px;margin-bottom:6px;border:1px solid var(--bd);border-radius:4px;font-size:.7rem;box-sizing:border-box">'+
-              '<div style="display:flex;gap:4px;margin-bottom:6px">'+
-                '<button class="btn btn-ghost btn-sm" style="font-size:.62rem;padding:2px 6px;flex:1" onclick="marcarTodosFiltroColumna(\''+c.key+'\',true)">Todos</button>'+
-                '<button class="btn btn-ghost btn-sm" style="font-size:.62rem;padding:2px 6px;flex:1" onclick="marcarTodosFiltroColumna(\''+c.key+'\',false)">Ninguno</button>'+
-              '</div>'+
-              '<div id="tabla-dd-'+c.key+'" style="overflow-y:auto;max-height:170px">'+
-              valores.map(function(v){
-                var checked = !excluidos.has(v);
-                return '<label class="tabla-dd-opcion" style="display:flex;align-items:center;gap:5px;font-size:.7rem;padding:2px 0;cursor:pointer">'+
-                  '<input type="checkbox" '+(checked?'checked':'')+' onchange="toggleValorFiltroColumna(\''+c.key+'\',\''+String(v).replace(/'/g,"\\'")+'\',this.checked)"> <span>'+etiquetaValorColumna(c.key, v)+'</span>'+
-                '</label>';
-              }).join('')+
-              '</div>'+
-            '</div>';
-          }
-          return '<th style="position:sticky;top:0;background:var(--bg2);padding:4px 6px;white-space:nowrap;border-bottom:1px solid var(--bd);user-select:none;z-index:1">'+
-            '<span onclick="ordenarTabla(\''+c.key+'\')" style="cursor:pointer">'+c.label+flecha+'</span>'+filtroIcono+dropdown+
+          return '<th onclick="ordenarTabla(\''+c.key+'\')" style="position:sticky;top:0;background:var(--bg2);padding:4px 6px;white-space:nowrap;border-bottom:1px solid var(--bd);cursor:pointer;user-select:none;z-index:1">'+c.label+flecha+'</th>';
+        }).join('')+
+      '</tr>'+
+      // Fila de filtros: un desplegable POR COLUMNA, vacío por defecto
+      // ("Todos") — el usuario elige el valor que quiere ver, nada empieza
+      // marcado ni oculto.
+      '<tr style="background:#fff">'+
+        '<th style="position:sticky;top:20px;background:#fff;padding:2px;border-bottom:2px solid var(--bd);z-index:1">'+
+          (Object.keys(tablaColFiltros).length ? '<button class="btn btn-ghost btn-sm" style="font-size:.6rem;padding:1px 4px" onclick="limpiarTodosFiltrosColumna()" title="Quitar todos los filtros">✕</button>' : '')+
+        '</th>'+
+        TABLA_COLS.map(function(c){
+          if(!c.filtrable) return '<th style="position:sticky;top:20px;background:#fff;border-bottom:2px solid var(--bd)"></th>';
+          var valores = [...(valoresPorColumna[c.key]||[])].sort();
+          var actual = tablaColFiltros[c.key] || '';
+          var opts = '<option value="">Todos</option>' + valores.map(function(v){
+            return '<option value="'+String(v).replace(/"/g,'&quot;')+'"'+(actual===v?' selected':'')+'>'+etiquetaValorColumna(c.key, v)+'</option>';
+          }).join('');
+          return '<th style="position:sticky;top:20px;background:#fff;padding:2px;border-bottom:2px solid var(--bd);z-index:1">'+
+            '<select onchange="cambiarFiltroColumnaTabla(\''+c.key+'\',this.value)" style="width:100%;font-size:.68rem;padding:2px;border:1px solid'+(actual?' #FF7900':' var(--bd)')+';border-radius:4px;font-weight:400">'+opts+'</select>'+
           '</th>';
         }).join('')+
-      '</tr></thead><tbody>';
+      '</tr>'+
+      '</thead><tbody>';
     tablaFilas.forEach(function(row, idx){
       var ev = row.ev;
       var estOpts = ['','pending','reprog','cancel','done'].map(function(k){
