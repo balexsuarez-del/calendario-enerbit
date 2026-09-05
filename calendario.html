@@ -5518,14 +5518,47 @@ var tablaOrdenAsc = true;
 const TABLA_COLS = [
   {key:'fecha', label:'Fecha'},
   {key:'oid',   label:'ID orden'},
-  {key:'st',    label:'Estado'},
-  {key:'ci',    label:'Ciudad'},
-  {key:'sta',   label:'Depto'},
+  {key:'st',    label:'Estado', filtrable:true},
+  {key:'ci',    label:'Ciudad', filtrable:true},
+  {key:'sta',   label:'Depto', filtrable:true},
   {key:'dir',   label:'Dirección'},
-  {key:'em',    label:'Aliado (correo)'},
+  {key:'em',    label:'Aliado (correo)', filtrable:true},
   {key:'medidor',label:'Medidor'},
   {key:'nt_m',  label:'Nota'},
 ];
+// Filtro tipo Excel por columna: cada entrada es un Set de valores
+// marcados para esa columna. Un Set vacío significa "todos" (sin filtro).
+var tablaColFiltros = {};
+var tablaDropdownAbierto = null;
+
+function valorColumnaTabla(ev, col){
+  var v = col==='st' ? calcStatus(ev) : (ev[col] || '');
+  return v || '(vacío)';
+}
+function etiquetaValorColumna(col, valor){
+  if(col==='st' && ST[valor]) return ST[valor].label;
+  return valor;
+}
+
+function toggleFiltroColumnaTabla(col, event){
+  event.stopPropagation();
+  tablaDropdownAbierto = (tablaDropdownAbierto===col) ? null : col;
+  renderAsstTabla();
+}
+
+function toggleValorFiltroColumna(col, valor, checked){
+  if(!tablaColFiltros[col]) tablaColFiltros[col] = new Set();
+  if(checked) tablaColFiltros[col].delete(valor); // quitar de "excluidos" -> se vuelve a mostrar
+  else tablaColFiltros[col].add(valor);
+  renderAsstTabla();
+}
+
+function limpiarFiltroColumna(col, event){
+  if(event) event.stopPropagation();
+  delete tablaColFiltros[col];
+  tablaDropdownAbierto = null;
+  renderAsstTabla();
+}
 
 function verTodoTabla(){
   var fechas = Object.keys(osIdx).sort();
@@ -5570,6 +5603,12 @@ function renderAsstTabla(){
   }
 
   var deptosDisponibles = new Set(), aliadosDisponibles = new Set();
+  // Valores distintos por columna filtrable (para armar los desplegables
+  // tipo Excel), calculados ANTES de aplicar los filtros de columna — así
+  // el desplegable siempre muestra todas las opciones, no solo las que
+  // sobrevivieron al filtro actual.
+  var valoresPorColumna = {};
+  TABLA_COLS.forEach(function(c){ if(c.filtrable) valoresPorColumna[c.key] = new Set(); });
 
   var candidatos = [];
   Object.entries(osIdx).forEach(function(entry){
@@ -5578,6 +5617,7 @@ function renderAsstTabla(){
     entry[1].forEach(function(ev){
       if(ev.sta) deptosDisponibles.add(ev.sta);
       if(ev.al) aliadosDisponibles.add(ev.al);
+      TABLA_COLS.forEach(function(c){ if(c.filtrable) valoresPorColumna[c.key].add(valorColumnaTabla(ev, c.key)); });
       // Búsqueda amplia (como en Excel): ID, dirección, ciudad, aliado,
       // correo, medidor y nota — no solo los 3 campos originales.
       if(texto && !(nrm(ev.oid).includes(texto) || nrm(ev.dir||'').includes(texto) || nrm(ev.ci||'').includes(texto) ||
@@ -5586,6 +5626,13 @@ function renderAsstTabla(){
       if(fDepto && ev.sta!==fDepto) return;
       if(fAliado && ev.al!==fAliado) return;
       if(fMedidor && !nrm(ev.medidor||'').includes(fMedidor)) return;
+      // Filtro tipo Excel por columna: si esta columna tiene valores
+      // desmarcados, ocultar las filas que coincidan con alguno de ellos.
+      var filtroColumnaOculta = Object.keys(tablaColFiltros).some(function(col){
+        var excluidos = tablaColFiltros[col];
+        return excluidos && excluidos.size>0 && excluidos.has(valorColumnaTabla(ev, col));
+      });
+      if(filtroColumnaOculta) return;
       var problemas = detectarInconsistencias(ev, fecha);
       if(soloInconsistencias && !problemas.length) return;
       candidatos.push({ev:ev, fecha:fecha, problemas:problemas});
@@ -5649,7 +5696,25 @@ function renderAsstTabla(){
       '<thead><tr style="background:var(--bg2);text-align:left">'+
         TABLA_COLS.map(function(c){
           var flecha = tablaOrdenCol===c.key ? (tablaOrdenAsc?' ▲':' ▼') : '';
-          return '<th onclick="ordenarTabla(\''+c.key+'\')" style="position:sticky;top:0;background:var(--bg2);padding:4px 6px;white-space:nowrap;border-bottom:1px solid var(--bd);cursor:pointer;user-select:none;z-index:1">'+c.label+flecha+'</th>';
+          var filtroActivo = c.filtrable && tablaColFiltros[c.key] && tablaColFiltros[c.key].size>0;
+          var filtroIcono = c.filtrable ? '<span onclick="toggleFiltroColumnaTabla(\''+c.key+'\',event)" style="margin-left:4px;cursor:pointer'+(filtroActivo?';color:#DC2626':'')+'" title="Filtrar esta columna">🔽</span>' : '';
+          var dropdown = '';
+          if(tablaDropdownAbierto===c.key){
+            var valores = [...(valoresPorColumna[c.key]||[])].sort();
+            var excluidos = tablaColFiltros[c.key] || new Set();
+            dropdown = '<div onclick="event.stopPropagation()" style="position:absolute;top:100%;left:0;background:#fff;border:1px solid var(--bd);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.2);padding:8px;z-index:10;min-width:170px;max-height:220px;overflow-y:auto;font-weight:400;text-transform:none;cursor:default">'+
+              '<button class="btn btn-ghost btn-sm" style="font-size:.65rem;padding:2px 6px;margin-bottom:6px;width:100%" onclick="limpiarFiltroColumna(\''+c.key+'\',event)">Quitar filtro (ver todos)</button>'+
+              valores.map(function(v){
+                var checked = !excluidos.has(v);
+                return '<label style="display:flex;align-items:center;gap:5px;font-size:.7rem;padding:2px 0;cursor:pointer">'+
+                  '<input type="checkbox" '+(checked?'checked':'')+' onchange="toggleValorFiltroColumna(\''+c.key+'\',\''+String(v).replace(/'/g,"\\'")+'\',this.checked)"> '+etiquetaValorColumna(c.key, v)+
+                '</label>';
+              }).join('')+
+            '</div>';
+          }
+          return '<th style="position:sticky;top:0;background:var(--bg2);padding:4px 6px;white-space:nowrap;border-bottom:1px solid var(--bd);user-select:none;z-index:1">'+
+            '<span onclick="ordenarTabla(\''+c.key+'\')" style="cursor:pointer">'+c.label+flecha+'</span>'+filtroIcono+dropdown+
+          '</th>';
         }).join('')+
       '</tr></thead><tbody>';
     tablaFilas.forEach(function(row, idx){
